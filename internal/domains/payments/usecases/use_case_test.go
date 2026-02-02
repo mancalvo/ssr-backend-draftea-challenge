@@ -291,6 +291,14 @@ func (m *mockPaymentProvider) ProcessPayment(ctx context.Context, amount int64, 
 	}, nil
 }
 
+// Error Payment Provider (returns network/timeout errors)
+
+type errorPaymentProvider struct{}
+
+func (m *errorPaymentProvider) ProcessPayment(ctx context.Context, amount int64, cardToken string, idempotencyKey string) (*domain.ProviderResponse, error) {
+	return nil, errors.New("network timeout")
+}
+
 // Tests
 
 func TestDeposit_Success(t *testing.T) {
@@ -381,6 +389,155 @@ func TestDeposit_WalletCreditFailed(t *testing.T) {
 	}
 }
 
+func TestDeposit_InvalidAmount(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	userSvc.activeUsers[userID] = true
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	// Test zero amount
+	_, err := uc.Deposit(context.Background(), userID, 0, "tok_test", nil)
+	if err != apperrors.ErrInvalidInput {
+		t.Errorf("expected ErrInvalidInput for zero amount, got: %v", err)
+	}
+
+	// Test negative amount
+	_, err = uc.Deposit(context.Background(), userID, -100, "tok_test", nil)
+	if err != apperrors.ErrInvalidInput {
+		t.Errorf("expected ErrInvalidInput for negative amount, got: %v", err)
+	}
+}
+
+func TestDeposit_IdempotencyKey_ReturnsCached(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	idempotencyKey := "deposit-123"
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 0
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	// First deposit
+	tx1, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", &idempotencyKey)
+	if err != nil {
+		t.Fatalf("expected no error on first deposit, got: %v", err)
+	}
+
+	// Second deposit with same idempotency key should return cached result
+	tx2, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", &idempotencyKey)
+	if err != nil {
+		t.Fatalf("expected no error on idempotent deposit, got: %v", err)
+	}
+
+	if tx1.ID != tx2.ID {
+		t.Errorf("expected same transaction ID for idempotent request, got %v and %v", tx1.ID, tx2.ID)
+	}
+
+	// Wallet should only be credited once
+	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
+	if balance != 10000 {
+		t.Errorf("expected wallet balance 10000 (single credit), got %d", balance)
+	}
+}
+
+func TestDeposit_ProviderDeclined(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{shouldFail: true}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 0
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
+
+	// Should return a provider declined error
+	var declinedErr *apperrors.ProviderDeclined
+	if !errors.As(err, &declinedErr) {
+		t.Errorf("expected ProviderDeclinedError, got: %v", err)
+	}
+
+	// Wallet should NOT be credited
+	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
+	if balance != 0 {
+		t.Errorf("expected wallet balance 0 (no credit on declined), got %d", balance)
+	}
+}
+
+func TestDeposit_ProviderError(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &errorPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 0
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
+	if err != apperrors.ErrProviderError {
+		t.Errorf("expected ErrProviderError, got: %v", err)
+	}
+
+	// Wallet should NOT be credited
+	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
+	if balance != 0 {
+		t.Errorf("expected wallet balance 0 (no credit on provider error), got %d", balance)
+	}
+}
+
+func TestDeposit_WalletNotFound(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	// Note: NOT setting walletSvc.walletIDs[userID] - user has no wallet
+
+	userSvc.activeUsers[userID] = true
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
+	if err != apperrors.ErrNotFound {
+		t.Errorf("expected ErrNotFound for wallet not found, got: %v", err)
+	}
+}
+
 func TestPurchase_Success(t *testing.T) {
 	txRepo := newMockTransactionRepo()
 	walletSvc := newMockWalletService()
@@ -450,6 +607,185 @@ func TestPurchase_InsufficientFunds(t *testing.T) {
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrInsufficientFunds {
 		t.Errorf("expected ErrInsufficientFunds, got: %v", err)
+	}
+}
+
+func TestPurchase_InactiveUser(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	offeringID := uuid.New()
+
+	userSvc.activeUsers[userID] = false // Inactive user
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrUserNotActive {
+		t.Errorf("expected ErrUserNotActive, got: %v", err)
+	}
+}
+
+func TestPurchase_OfferingNotFound(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 10000
+	// Note: NOT setting offeringSvc.available[offeringID] - offering doesn't exist
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrNotFound {
+		t.Errorf("expected ErrNotFound for non-existent offering, got: %v", err)
+	}
+}
+
+func TestPurchase_OfferingNotAvailable(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 10000
+	offeringSvc.available[offeringID] = false // Offering exists but not available
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrNotFound {
+		t.Errorf("expected ErrNotFound for unavailable offering, got: %v", err)
+	}
+}
+
+func TestPurchase_AlreadyOwned(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 10000
+	offeringSvc.prices[offeringID] = 5000
+	offeringSvc.available[offeringID] = true
+	// User already has access
+	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrAlreadyOwned {
+		t.Errorf("expected ErrAlreadyOwned, got: %v", err)
+	}
+}
+
+func TestPurchase_IdempotencyKey_ReturnsCached(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+	idempotencyKey := "purchase-123"
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 10000
+	offeringSvc.prices[offeringID] = 5000
+	offeringSvc.available[offeringID] = true
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	// First purchase
+	tx1, err := uc.Purchase(context.Background(), userID, offeringID, &idempotencyKey)
+	if err != nil {
+		t.Fatalf("expected no error on first purchase, got: %v", err)
+	}
+
+	// Second purchase with same idempotency key should return cached result
+	tx2, err := uc.Purchase(context.Background(), userID, offeringID, &idempotencyKey)
+	if err != nil {
+		t.Fatalf("expected no error on idempotent purchase, got: %v", err)
+	}
+
+	if tx1.ID != tx2.ID {
+		t.Errorf("expected same transaction ID for idempotent request, got %v and %v", tx1.ID, tx2.ID)
+	}
+
+	// Wallet should only be debited once
+	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
+	if balance != 5000 {
+		t.Errorf("expected wallet balance 5000 (single debit), got %d", balance)
+	}
+}
+
+func TestPurchase_GrantAccessRaceCondition(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 10000
+	offeringSvc.prices[offeringID] = 5000
+	offeringSvc.available[offeringID] = true
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	// First purchase succeeds
+	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
+	if err != nil {
+		t.Fatalf("expected no error on first purchase, got: %v", err)
+	}
+
+	// Reset wallet balance for second attempt (simulate race where wallet debit succeeds)
+	walletSvc.balances[userID] = 10000
+
+	// Second purchase should fail because entitlement already exists
+	_, err = uc.Purchase(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrAlreadyOwned {
+		t.Errorf("expected ErrAlreadyOwned on race condition, got: %v", err)
 	}
 }
 
@@ -605,6 +941,116 @@ func TestRefund_RevokeFailed(t *testing.T) {
 	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
 	if balance != 5000 {
 		t.Errorf("expected wallet balance 5000 (refund credited), got %d", balance)
+	}
+}
+
+func TestRefund_NoActiveEntitlement(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 0
+	// Note: NOT setting entitleSvc.access - user doesn't own this offering
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Refund(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrNotFound {
+		t.Errorf("expected ErrNotFound for no active entitlement, got: %v", err)
+	}
+}
+
+func TestRefund_OriginalTxNotFound(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+	purchaseTxID := uuid.New()
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 0
+
+	// Set up entitlement but NOT the transaction (data inconsistency scenario)
+	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
+	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
+	// Note: NOT adding txRepo.transactions[purchaseTxID]
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	_, err := uc.Refund(context.Background(), userID, offeringID, nil)
+	if err != apperrors.ErrNotFound {
+		t.Errorf("expected ErrNotFound for missing original transaction, got: %v", err)
+	}
+}
+
+func TestRefund_IdempotencyKey_ReturnsCached(t *testing.T) {
+	txRepo := newMockTransactionRepo()
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	offeringSvc := newMockOfferingService()
+	entitleSvc := newMockEntitlementService()
+	provider := &mockPaymentProvider{}
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	offeringID := uuid.New()
+	purchaseTxID := uuid.New()
+	idempotencyKey := "refund-123"
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 0
+
+	// Simulate existing purchase
+	txRepo.transactions[purchaseTxID] = &domain.Transaction{
+		ID:         purchaseTxID,
+		UserID:     userID,
+		WalletID:   walletID,
+		Type:       domain.TxPurchase,
+		Amount:     5000,
+		OfferingID: &offeringID,
+	}
+	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
+	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
+
+	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+
+	// First refund
+	tx1, err := uc.Refund(context.Background(), userID, offeringID, &idempotencyKey)
+	if err != nil {
+		t.Fatalf("expected no error on first refund, got: %v", err)
+	}
+
+	// Second refund with same idempotency key should return cached result
+	tx2, err := uc.Refund(context.Background(), userID, offeringID, &idempotencyKey)
+	if err != nil {
+		t.Fatalf("expected no error on idempotent refund, got: %v", err)
+	}
+
+	if tx1.ID != tx2.ID {
+		t.Errorf("expected same transaction ID for idempotent request, got %v and %v", tx1.ID, tx2.ID)
+	}
+
+	// Wallet should only be credited once
+	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
+	if balance != 5000 {
+		t.Errorf("expected wallet balance 5000 (single credit), got %d", balance)
 	}
 }
 
