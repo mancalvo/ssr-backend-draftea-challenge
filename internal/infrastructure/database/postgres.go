@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/logger"
 )
@@ -29,7 +29,7 @@ type Executor interface {
 func NewPostgresConnection(cfg config.DatabaseConfig) (*DB, error) {
 	dsn := cfg.ConnectionString()
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}

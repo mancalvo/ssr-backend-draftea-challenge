@@ -3,9 +3,10 @@ package infrastructure
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
@@ -21,8 +22,9 @@ func NewPostgresTransactionRepository(db database.Executor) *PostgresTransaction
 
 // isUniqueViolation checks if error is a PostgreSQL unique constraint violation
 func isUniqueViolation(err error) bool {
-	if pqErr, ok := err.(*pq.Error); ok {
-		return pqErr.Code == "23505" // unique_violation
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505" // unique_violation
 	}
 	return false
 }
