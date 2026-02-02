@@ -2,12 +2,10 @@ package domain
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Offering struct {
-	ID           uuid.UUID
+	ID           string
 	Name         string
 	Description  string
 	PriceCents   int64
@@ -24,10 +22,10 @@ const (
 )
 
 type Entitlement struct {
-	ID            uuid.UUID
-	UserID        uuid.UUID
-	OfferingID    uuid.UUID
-	TransactionID uuid.UUID
+	ID            string
+	UserID        string
+	OfferingID    string
+	TransactionID string
 	Status        EntitlementStatus
 	GrantedAt     time.Time
 	RevokedAt     *time.Time

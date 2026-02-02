@@ -52,28 +52,28 @@ docker-compose up --build
 
 ```bash
 # Consultar saldo
-curl http://localhost:8080/wallets/11111111-1111-1111-1111-111111111111/balance
+curl http://localhost:8080/wallets/d60g19m0u7j2796eeac0/balance
 
 # Depositar
 curl -X POST http://localhost:8080/payments/deposit \
   -H "Content-Type: application/json" \
-  -d '{"user_id": "11111111-1111-1111-1111-111111111111", "amount": 50000, "card_token": "tok_test"}'
+  -d '{"user_id": "d60g19m0u7j2796eeac0", "amount": 50000, "card_token": "tok_test"}'
 
 # Contratar servicio
 curl -X POST http://localhost:8080/payments/purchase \
   -H "Content-Type: application/json" \
-  -d '{"user_id": "11111111-1111-1111-1111-111111111111", "offering_id": "cccccccc-cccc-cccc-cccc-cccccccccccc"}'
+  -d '{"user_id": "d60g19m0u7j2796eeac0", "offering_id": "d60g19m0u7j2796eeae0"}'
 
 # Reembolsar servicio
 curl -X POST http://localhost:8080/payments/refund \
   -H "Content-Type: application/json" \
-  -d '{"user_id": "11111111-1111-1111-1111-111111111111", "offering_id": "cccccccc-cccc-cccc-cccc-cccccccccccc"}'
+  -d '{"user_id": "d60g19m0u7j2796eeac0", "offering_id": "d60g19m0u7j2796eeae0"}'
 
 # Historial de transacciones
-curl "http://localhost:8080/payments/history/11111111-1111-1111-1111-111111111111?page=1&page_size=10"
+curl "http://localhost:8080/payments/history/d60g19m0u7j2796eeac0?page=1&page_size=10"
 
 # Servicios pagador por usuario
-curl http://localhost:8080/users/11111111-1111-1111-1111-111111111111/entitlements
+curl http://localhost:8080/users/d60g19m0u7j2796eeac0/entitlements
 ```
 
 ## Tests

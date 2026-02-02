@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
@@ -55,7 +54,7 @@ func (r *PostgresTransactionRepository) Create(ctx context.Context, tx *domain.T
 	return err
 }
 
-func (r *PostgresTransactionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.TransactionStatus) error {
+func (r *PostgresTransactionRepository) UpdateStatus(ctx context.Context, id string, status domain.TransactionStatus) error {
 	query := `UPDATE transactions SET status = $1 WHERE id = $2`
 
 	result, err := r.db.ExecContext(ctx, query, status, id)
@@ -74,7 +73,7 @@ func (r *PostgresTransactionRepository) UpdateStatus(ctx context.Context, id uui
 	return nil
 }
 
-func (r *PostgresTransactionRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error) {
+func (r *PostgresTransactionRepository) GetByID(ctx context.Context, id string) (*domain.Transaction, error) {
 	query := `
 		SELECT id, user_id, wallet_id, type, amount_cents, status, offering_id, provider_ref, idempotency_key, created_at
 		FROM transactions
@@ -105,7 +104,7 @@ func (r *PostgresTransactionRepository) GetByID(ctx context.Context, id uuid.UUI
 	return &tx, nil
 }
 
-func (r *PostgresTransactionRepository) GetByUserAndIdempotencyKey(ctx context.Context, userID uuid.UUID, key string) (*domain.Transaction, error) {
+func (r *PostgresTransactionRepository) GetByUserAndIdempotencyKey(ctx context.Context, userID string, key string) (*domain.Transaction, error) {
 	query := `
 		SELECT id, user_id, wallet_id, type, amount_cents, status, offering_id, provider_ref, idempotency_key, created_at
 		FROM transactions
@@ -136,7 +135,7 @@ func (r *PostgresTransactionRepository) GetByUserAndIdempotencyKey(ctx context.C
 	return &tx, nil
 }
 
-func (r *PostgresTransactionRepository) GetByUserID(ctx context.Context, userID uuid.UUID, page, pageSize int) (*domain.PaginatedTransactions, error) {
+func (r *PostgresTransactionRepository) GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
 	// Count total
 	countQuery := `SELECT COUNT(*) FROM transactions WHERE user_id = $1`
 	var totalCount int

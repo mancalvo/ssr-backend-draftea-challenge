@@ -2,12 +2,10 @@ package domain
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type User struct {
-	ID        uuid.UUID
+	ID        string
 	Email     string
 	Name      string
 	IsActive  bool

@@ -7,25 +7,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
+	"github.com/rs/xid"
 )
 
 type PaymentUseCases interface {
-	Deposit(ctx context.Context, userID uuid.UUID, amount int64, cardToken string, idempotencyKey *string) (*domain.Transaction, error)
-	Purchase(ctx context.Context, userID, offeringID uuid.UUID, idempotencyKey *string) (*domain.Transaction, error)
-	Refund(ctx context.Context, userID, offeringID uuid.UUID, idempotencyKey *string) (*domain.Transaction, error)
-	GetHistory(ctx context.Context, userID uuid.UUID, page, pageSize int) (*domain.PaginatedTransactions, error)
+	Deposit(ctx context.Context, userID string, amount int64, cardToken string, idempotencyKey *string) (*domain.Transaction, error)
+	Purchase(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error)
+	Refund(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error)
+	GetHistory(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error)
 }
 
 type paymentUseCases struct {
-	txRepo       domain.TransactionRepository
-	walletSvc    domain.WalletService
-	userSvc      domain.UserService
-	offeringSvc  domain.OfferingService
-	entitleSvc   domain.EntitlementService
-	provider     domain.PaymentProvider
+	txRepo      domain.TransactionRepository
+	walletSvc   domain.WalletService
+	userSvc     domain.UserService
+	offeringSvc domain.OfferingService
+	entitleSvc  domain.EntitlementService
+	provider    domain.PaymentProvider
 }
 
 func NewPaymentUseCases(
@@ -50,7 +50,7 @@ func NewPaymentUseCases(
 // Uses "Record First" pattern: creates PENDING transaction before calling provider.
 // This ensures we always have a record for reconciliation if provider call succeeds but DB fails.
 // If idempotencyKey is provided, returns cached result for duplicate requests.
-func (uc *paymentUseCases) Deposit(ctx context.Context, userID uuid.UUID, amount int64, cardToken string, idempotencyKey *string) (*domain.Transaction, error) {
+func (uc *paymentUseCases) Deposit(ctx context.Context, userID string, amount int64, cardToken string, idempotencyKey *string) (*domain.Transaction, error) {
 	// Check idempotency key first (scoped by user for security)
 	if idempotencyKey != nil && *idempotencyKey != "" {
 		existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
@@ -81,8 +81,9 @@ func (uc *paymentUseCases) Deposit(ctx context.Context, userID uuid.UUID, amount
 		return nil, err
 	}
 
+	txID := xid.New().String()
 	tx := &domain.Transaction{
-		ID:             uuid.New(),
+		ID:             txID,
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxDeposit,
@@ -106,11 +107,11 @@ func (uc *paymentUseCases) Deposit(ctx context.Context, userID uuid.UUID, amount
 	// Generate hashed provider key: sha256(userID + idempotencyKey) for privacy
 	providerKey := ""
 	if idempotencyKey != nil && *idempotencyKey != "" {
-		hash := sha256.Sum256([]byte(userID.String() + *idempotencyKey))
+		hash := sha256.Sum256([]byte(userID + *idempotencyKey))
 		providerKey = fmt.Sprintf("%x", hash)[:32] // First 32 hex chars
 	} else {
 		// Fallback: use transaction ID if no idempotency key
-		providerKey = tx.ID.String()
+		providerKey = tx.ID
 	}
 
 	providerResp, err := uc.provider.ProcessPayment(ctx, amount, cardToken, providerKey)
@@ -148,7 +149,7 @@ func (uc *paymentUseCases) Deposit(ctx context.Context, userID uuid.UUID, amount
 }
 
 // Purchase debits wallet and grants access to an offering
-func (uc *paymentUseCases) Purchase(ctx context.Context, userID, offeringID uuid.UUID, idempotencyKey *string) (*domain.Transaction, error) {
+func (uc *paymentUseCases) Purchase(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error) {
 	// Check idempotency key first (scoped by user for security)
 	if idempotencyKey != nil && *idempotencyKey != "" {
 		existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
@@ -200,8 +201,9 @@ func (uc *paymentUseCases) Purchase(ctx context.Context, userID, offeringID uuid
 		return nil, err
 	}
 
+	txID := xid.New().String()
 	tx := &domain.Transaction{
-		ID:             uuid.New(),
+		ID:             txID,
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxPurchase,
@@ -238,7 +240,7 @@ func (uc *paymentUseCases) Purchase(ctx context.Context, userID, offeringID uuid
 
 // Refund reverses a purchase: credits wallet and revokes entitlement
 // Uses granular status tracking for eventual consistency and reconciliation
-func (uc *paymentUseCases) Refund(ctx context.Context, userID, offeringID uuid.UUID, idempotencyKey *string) (*domain.Transaction, error) {
+func (uc *paymentUseCases) Refund(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error) {
 	// Check idempotency key first (scoped by user for security)
 	if idempotencyKey != nil && *idempotencyKey != "" {
 		existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
@@ -268,8 +270,9 @@ func (uc *paymentUseCases) Refund(ctx context.Context, userID, offeringID uuid.U
 	}
 
 	// Create refund transaction (PENDING)
+	refundTxID := xid.New().String()
 	refundTx := &domain.Transaction{
-		ID:             uuid.New(),
+		ID:             refundTxID,
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxRefund,
@@ -315,7 +318,7 @@ func (uc *paymentUseCases) Refund(ctx context.Context, userID, offeringID uuid.U
 }
 
 // GetHistory returns paginated transaction history
-func (uc *paymentUseCases) GetHistory(ctx context.Context, userID uuid.UUID, page, pageSize int) (*domain.PaginatedTransactions, error) {
+func (uc *paymentUseCases) GetHistory(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
 	isActive, err := uc.userSvc.IsActive(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -331,4 +334,3 @@ func (uc *paymentUseCases) GetHistory(ctx context.Context, userID uuid.UUID, pag
 
 	return uc.txRepo.GetByUserID(ctx, userID, page, pageSize)
 }
-

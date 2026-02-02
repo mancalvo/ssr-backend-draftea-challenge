@@ -6,7 +6,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
@@ -32,7 +31,7 @@ func NewPostgresOfferingRepository(db database.Executor) *PostgresOfferingReposi
 	return &PostgresOfferingRepository{db: db}
 }
 
-func (r *PostgresOfferingRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Offering, error) {
+func (r *PostgresOfferingRepository) GetByID(ctx context.Context, id string) (*domain.Offering, error) {
 	query := `
 		SELECT id, name, description, price_cents, duration_days, is_active, created_at
 		FROM offerings
@@ -127,7 +126,7 @@ func (r *PostgresEntitlementRepository) Create(ctx context.Context, ent *domain.
 	return err
 }
 
-func (r *PostgresEntitlementRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Entitlement, error) {
+func (r *PostgresEntitlementRepository) GetByUserID(ctx context.Context, userID string) ([]domain.Entitlement, error) {
 	query := `
 		SELECT id, user_id, offering_id, transaction_id, status, granted_at, revoked_at
 		FROM entitlements
@@ -161,7 +160,7 @@ func (r *PostgresEntitlementRepository) GetByUserID(ctx context.Context, userID 
 	return entitlements, rows.Err()
 }
 
-func (r *PostgresEntitlementRepository) GetByTransactionID(ctx context.Context, txID uuid.UUID) (*domain.Entitlement, error) {
+func (r *PostgresEntitlementRepository) GetByTransactionID(ctx context.Context, txID string) (*domain.Entitlement, error) {
 	query := `
 		SELECT id, user_id, offering_id, transaction_id, status, granted_at, revoked_at
 		FROM entitlements
@@ -189,7 +188,7 @@ func (r *PostgresEntitlementRepository) GetByTransactionID(ctx context.Context, 
 	return &e, nil
 }
 
-func (r *PostgresEntitlementRepository) Revoke(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresEntitlementRepository) Revoke(ctx context.Context, id string) error {
 	query := `
 		UPDATE entitlements
 		SET status = $1, revoked_at = $2

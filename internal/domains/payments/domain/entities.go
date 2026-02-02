@@ -2,8 +2,6 @@ package domain
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type TransactionType string
@@ -31,15 +29,15 @@ const (
 )
 
 type Transaction struct {
-	ID             uuid.UUID
-	UserID         uuid.UUID
-	WalletID       uuid.UUID
+	ID             string
+	UserID         string
+	WalletID       string
 	Type           TransactionType
 	Amount         int64 // always positive, in cents
 	Status         TransactionStatus
-	OfferingID     *uuid.UUID // for purchase/refund
-	ProviderRef    *string    // for deposits
-	IdempotencyKey *string    // client-provided key for deduplication
+	OfferingID     *string // for purchase/refund
+	ProviderRef    *string // for deposits
+	IdempotencyKey *string // client-provided key for deduplication
 	CreatedAt      time.Time
 }
 

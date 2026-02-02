@@ -3,7 +3,7 @@
 
 -- Users table
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id CHAR(20) PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
@@ -12,15 +12,15 @@ CREATE TABLE users (
 
 -- Wallets table (balance only)
 CREATE TABLE wallets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    id CHAR(20) PRIMARY KEY,
+    user_id CHAR(20) UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     balance_cents BIGINT NOT NULL DEFAULT 0 CHECK (balance_cents >= 0),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Offerings catalog
 CREATE TABLE offerings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id CHAR(20) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     price_cents BIGINT NOT NULL CHECK (price_cents >= 0),
@@ -31,9 +31,9 @@ CREATE TABLE offerings (
 
 -- Transactions ledger (all payment types)
 CREATE TABLE transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id),
-    wallet_id UUID REFERENCES wallets(id),
+    id CHAR(20) PRIMARY KEY,
+    user_id CHAR(20) REFERENCES users(id),
+    wallet_id CHAR(20) REFERENCES wallets(id),
     type VARCHAR(20) NOT NULL CHECK (type IN ('deposit', 'purchase', 'refund')),
     amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN (
@@ -47,7 +47,7 @@ CREATE TABLE transactions (
         'credit_failed', 
         'revoke_failed'
     )),
-    offering_id UUID REFERENCES offerings(id),
+    offering_id CHAR(20) REFERENCES offerings(id),
     provider_ref VARCHAR(255),
     idempotency_key VARCHAR(64),
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -55,10 +55,10 @@ CREATE TABLE transactions (
 
 -- User access to offerings
 CREATE TABLE entitlements (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id),
-    offering_id UUID REFERENCES offerings(id),
-    transaction_id UUID REFERENCES transactions(id),
+    id CHAR(20) PRIMARY KEY,
+    user_id CHAR(20) REFERENCES users(id),
+    offering_id CHAR(20) REFERENCES offerings(id),
+    transaction_id CHAR(20) REFERENCES transactions(id),
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
     granted_at TIMESTAMPTZ DEFAULT NOW(),
     revoked_at TIMESTAMPTZ
@@ -81,16 +81,16 @@ CREATE UNIQUE INDEX idx_transactions_user_idempotency_key
 ON transactions (user_id, idempotency_key) 
 WHERE idempotency_key IS NOT NULL;
 
--- Seed data for testing
+-- Seed data for testing (using valid xid format)
 INSERT INTO users (id, email, name, is_active) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'test@example.com', 'Test User', true),
-    ('22222222-2222-2222-2222-222222222222', 'inactive@example.com', 'Inactive User', false);
+    ('d60g19m0u7j2796eeac0', 'test@example.com', 'Test User', true),
+    ('d60g19m0u7j2796eeacg', 'inactive@example.com', 'Inactive User', false);
 
 INSERT INTO wallets (id, user_id, balance_cents) VALUES
-    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 100000),
-    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222', 0);
+    ('d60g19m0u7j2796eead0', 'd60g19m0u7j2796eeac0', 100000),
+    ('d60g19m0u7j2796eeadg', 'd60g19m0u7j2796eeacg', 0);
 
 INSERT INTO offerings (id, name, description, price_cents, is_active) VALUES
-    ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Premium Plan', 'Monthly premium subscription', 9900, true),
-    ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'Basic Plan', 'Monthly basic subscription', 4900, true),
-    ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'One-time Feature', 'Unlock special feature', 1999, true);
+    ('d60g19m0u7j2796eeae0', 'Premium Plan', 'Monthly premium subscription', 9900, true),
+    ('d60g19m0u7j2796eeaeg', 'Basic Plan', 'Monthly basic subscription', 4900, true),
+    ('d60g19m0u7j2796eeaf0', 'One-time Feature', 'Unlock special feature', 1999, true);

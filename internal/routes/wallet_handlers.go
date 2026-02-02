@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	usersDomain "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/users/domain"
 	walletsDomain "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/wallets/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
+	"github.com/rs/xid"
 )
 
 type WalletHandlers struct {
@@ -25,14 +25,13 @@ func NewWalletHandlers(walletRepo walletsDomain.WalletRepository, userRepo users
 // GetBalance handles GET /wallets/{user_id}/balance
 func (h *WalletHandlers) GetBalance(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.PathValue("user_id")
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
+	if _, err := xid.FromString(userIDStr); err != nil {
 		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	// Validate user exists and is active
-	user, err := h.userRepo.GetByID(r.Context(), userID)
+	user, err := h.userRepo.GetByID(r.Context(), userIDStr)
 	if err != nil {
 		JSONError(w, err)
 		return
@@ -42,7 +41,7 @@ func (h *WalletHandlers) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wallet, err := h.walletRepo.GetByUserID(r.Context(), userID)
+	wallet, err := h.walletRepo.GetByUserID(r.Context(), userIDStr)
 	if err != nil {
 		JSONError(w, err)
 		return

@@ -3,8 +3,8 @@ package routes
 import (
 	"net/http"
 
-	"github.com/google/uuid"
 	offeringsDomain "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/domain"
+	"github.com/rs/xid"
 )
 
 type EntitlementHandlers struct {
@@ -25,13 +25,12 @@ func NewEntitlementHandlers(
 // GetUserEntitlements handles GET /users/{user_id}/entitlements
 func (h *EntitlementHandlers) GetUserEntitlements(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.PathValue("user_id")
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
+	if _, err := xid.FromString(userIDStr); err != nil {
 		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
-	entitlements, err := h.entitlementRepo.GetByUserID(r.Context(), userID)
+	entitlements, err := h.entitlementRepo.GetByUserID(r.Context(), userIDStr)
 	if err != nil {
 		JSONError(w, err)
 		return
@@ -62,7 +61,7 @@ func (h *EntitlementHandlers) GetUserEntitlements(w http.ResponseWriter, r *http
 	}
 
 	JSON(w, http.StatusOK, map[string]interface{}{
-		"user_id":      userID,
+		"user_id":      userIDStr,
 		"entitlements": result,
 		"count":        len(result),
 	})

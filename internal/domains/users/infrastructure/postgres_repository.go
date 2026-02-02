@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/google/uuid"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/users/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
@@ -18,7 +17,7 @@ func NewPostgresUserRepository(db database.Executor) *PostgresUserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
-func (r *PostgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+func (r *PostgresUserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
 	query := `
 		SELECT id, email, name, is_active, created_at
 		FROM users

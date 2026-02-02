@@ -6,20 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
+	"github.com/rs/xid"
 )
 
 // Mock Transaction Repository
 
 type mockTransactionRepo struct {
-	transactions map[uuid.UUID]*domain.Transaction
+	transactions map[string]*domain.Transaction
 }
 
 func newMockTransactionRepo() *mockTransactionRepo {
-	return &mockTransactionRepo{transactions: make(map[uuid.UUID]*domain.Transaction)}
+	return &mockTransactionRepo{transactions: make(map[string]*domain.Transaction)}
 }
 
 func (m *mockTransactionRepo) Create(ctx context.Context, tx *domain.Transaction) error {
@@ -27,14 +27,14 @@ func (m *mockTransactionRepo) Create(ctx context.Context, tx *domain.Transaction
 	return nil
 }
 
-func (m *mockTransactionRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error) {
+func (m *mockTransactionRepo) GetByID(ctx context.Context, id string) (*domain.Transaction, error) {
 	if tx, ok := m.transactions[id]; ok {
 		return tx, nil
 	}
 	return nil, apperrors.ErrNotFound
 }
 
-func (m *mockTransactionRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.TransactionStatus) error {
+func (m *mockTransactionRepo) UpdateStatus(ctx context.Context, id string, status domain.TransactionStatus) error {
 	if tx, ok := m.transactions[id]; ok {
 		tx.Status = status
 		return nil
@@ -42,7 +42,7 @@ func (m *mockTransactionRepo) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	return apperrors.ErrNotFound
 }
 
-func (m *mockTransactionRepo) GetByUserAndIdempotencyKey(ctx context.Context, userID uuid.UUID, key string) (*domain.Transaction, error) {
+func (m *mockTransactionRepo) GetByUserAndIdempotencyKey(ctx context.Context, userID string, key string) (*domain.Transaction, error) {
 	for _, tx := range m.transactions {
 		if tx.UserID == userID && tx.IdempotencyKey != nil && *tx.IdempotencyKey == key {
 			return tx, nil
@@ -51,7 +51,7 @@ func (m *mockTransactionRepo) GetByUserAndIdempotencyKey(ctx context.Context, us
 	return nil, apperrors.ErrNotFound
 }
 
-func (m *mockTransactionRepo) GetByUserID(ctx context.Context, userID uuid.UUID, page, pageSize int) (*domain.PaginatedTransactions, error) {
+func (m *mockTransactionRepo) GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
 	var txs []domain.Transaction
 	for _, tx := range m.transactions {
 		if tx.UserID == userID {
@@ -70,25 +70,25 @@ func (m *mockTransactionRepo) GetByUserID(ctx context.Context, userID uuid.UUID,
 // Mock Wallet Service
 
 type mockWalletService struct {
-	balances  map[uuid.UUID]int64  // userID -> balance
-	walletIDs map[uuid.UUID]uuid.UUID // userID -> walletID
+	balances  map[string]int64  // userID -> balance
+	walletIDs map[string]string // userID -> walletID
 }
 
 func newMockWalletService() *mockWalletService {
 	return &mockWalletService{
-		balances:  make(map[uuid.UUID]int64),
-		walletIDs: make(map[uuid.UUID]uuid.UUID),
+		balances:  make(map[string]int64),
+		walletIDs: make(map[string]string),
 	}
 }
 
-func (m *mockWalletService) GetBalance(ctx context.Context, userID uuid.UUID) (int64, uuid.UUID, error) {
+func (m *mockWalletService) GetBalance(ctx context.Context, userID string) (int64, string, error) {
 	if walletID, ok := m.walletIDs[userID]; ok {
 		return m.balances[userID], walletID, nil
 	}
-	return 0, uuid.Nil, apperrors.ErrNotFound
+	return 0, "", apperrors.ErrNotFound
 }
 
-func (m *mockWalletService) Credit(ctx context.Context, userID uuid.UUID, amountCents int64) error {
+func (m *mockWalletService) Credit(ctx context.Context, userID string, amountCents int64) error {
 	if _, ok := m.walletIDs[userID]; !ok {
 		return apperrors.ErrNotFound
 	}
@@ -96,7 +96,7 @@ func (m *mockWalletService) Credit(ctx context.Context, userID uuid.UUID, amount
 	return nil
 }
 
-func (m *mockWalletService) Debit(ctx context.Context, userID uuid.UUID, amountCents int64) error {
+func (m *mockWalletService) Debit(ctx context.Context, userID string, amountCents int64) error {
 	if _, ok := m.walletIDs[userID]; !ok {
 		return apperrors.ErrNotFound
 	}
@@ -110,29 +110,29 @@ func (m *mockWalletService) Debit(ctx context.Context, userID uuid.UUID, amountC
 // Failing Wallet Service (for testing failure scenarios)
 
 type failingWalletService struct {
-	balances  map[uuid.UUID]int64
-	walletIDs map[uuid.UUID]uuid.UUID
+	balances  map[string]int64
+	walletIDs map[string]string
 }
 
 func newFailingWalletService() *failingWalletService {
 	return &failingWalletService{
-		balances:  make(map[uuid.UUID]int64),
-		walletIDs: make(map[uuid.UUID]uuid.UUID),
+		balances:  make(map[string]int64),
+		walletIDs: make(map[string]string),
 	}
 }
 
-func (m *failingWalletService) GetBalance(ctx context.Context, userID uuid.UUID) (int64, uuid.UUID, error) {
+func (m *failingWalletService) GetBalance(ctx context.Context, userID string) (int64, string, error) {
 	if walletID, ok := m.walletIDs[userID]; ok {
 		return m.balances[userID], walletID, nil
 	}
-	return 0, uuid.Nil, apperrors.ErrNotFound
+	return 0, "", apperrors.ErrNotFound
 }
 
-func (m *failingWalletService) Credit(ctx context.Context, userID uuid.UUID, amountCents int64) error {
+func (m *failingWalletService) Credit(ctx context.Context, userID string, amountCents int64) error {
 	return errors.New("simulated credit failure")
 }
 
-func (m *failingWalletService) Debit(ctx context.Context, userID uuid.UUID, amountCents int64) error {
+func (m *failingWalletService) Debit(ctx context.Context, userID string, amountCents int64) error {
 	if m.balances[userID] < amountCents {
 		return apperrors.ErrInsufficientFunds
 	}
@@ -143,14 +143,14 @@ func (m *failingWalletService) Debit(ctx context.Context, userID uuid.UUID, amou
 // Mock User Service
 
 type mockUserService struct {
-	activeUsers map[uuid.UUID]bool
+	activeUsers map[string]bool
 }
 
 func newMockUserService() *mockUserService {
-	return &mockUserService{activeUsers: make(map[uuid.UUID]bool)}
+	return &mockUserService{activeUsers: make(map[string]bool)}
 }
 
-func (m *mockUserService) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
+func (m *mockUserService) IsActive(ctx context.Context, userID string) (bool, error) {
 	if active, ok := m.activeUsers[userID]; ok {
 		return active, nil
 	}
@@ -160,25 +160,25 @@ func (m *mockUserService) IsActive(ctx context.Context, userID uuid.UUID) (bool,
 // Mock Offering Service
 
 type mockOfferingService struct {
-	prices    map[uuid.UUID]int64
-	available map[uuid.UUID]bool
+	prices    map[string]int64
+	available map[string]bool
 }
 
 func newMockOfferingService() *mockOfferingService {
 	return &mockOfferingService{
-		prices:    make(map[uuid.UUID]int64),
-		available: make(map[uuid.UUID]bool),
+		prices:    make(map[string]int64),
+		available: make(map[string]bool),
 	}
 }
 
-func (m *mockOfferingService) GetPrice(ctx context.Context, offeringID uuid.UUID) (int64, error) {
+func (m *mockOfferingService) GetPrice(ctx context.Context, offeringID string) (int64, error) {
 	if price, ok := m.prices[offeringID]; ok {
 		return price, nil
 	}
 	return 0, apperrors.ErrNotFound
 }
 
-func (m *mockOfferingService) IsAvailable(ctx context.Context, offeringID uuid.UUID) (bool, error) {
+func (m *mockOfferingService) IsAvailable(ctx context.Context, offeringID string) (bool, error) {
 	if available, ok := m.available[offeringID]; ok {
 		return available, nil
 	}
@@ -188,22 +188,22 @@ func (m *mockOfferingService) IsAvailable(ctx context.Context, offeringID uuid.U
 // Mock Entitlement Service
 
 type mockEntitlementService struct {
-	access       map[string]bool          // "userID:offeringID" -> hasAccess
-	txIDs        map[string]uuid.UUID     // "userID:offeringID" -> transactionID
+	access map[string]bool   // "userID:offeringID" -> hasAccess
+	txIDs  map[string]string // "userID:offeringID" -> transactionID
 }
 
 func newMockEntitlementService() *mockEntitlementService {
 	return &mockEntitlementService{
 		access: make(map[string]bool),
-		txIDs:  make(map[string]uuid.UUID),
+		txIDs:  make(map[string]string),
 	}
 }
 
-func (m *mockEntitlementService) key(userID, offeringID uuid.UUID) string {
-	return userID.String() + ":" + offeringID.String()
+func (m *mockEntitlementService) key(userID, offeringID string) string {
+	return userID + ":" + offeringID
 }
 
-func (m *mockEntitlementService) GrantAccess(ctx context.Context, userID, offeringID, transactionID uuid.UUID) error {
+func (m *mockEntitlementService) GrantAccess(ctx context.Context, userID, offeringID, transactionID string) error {
 	k := m.key(userID, offeringID)
 	if m.access[k] {
 		return apperrors.ErrAlreadyOwned
@@ -213,7 +213,7 @@ func (m *mockEntitlementService) GrantAccess(ctx context.Context, userID, offeri
 	return nil
 }
 
-func (m *mockEntitlementService) RevokeAccess(ctx context.Context, userID, offeringID uuid.UUID) error {
+func (m *mockEntitlementService) RevokeAccess(ctx context.Context, userID, offeringID string) error {
 	k := m.key(userID, offeringID)
 	if !m.access[k] {
 		return apperrors.ErrNotFound
@@ -222,14 +222,14 @@ func (m *mockEntitlementService) RevokeAccess(ctx context.Context, userID, offer
 	return nil
 }
 
-func (m *mockEntitlementService) HasActiveAccess(ctx context.Context, userID, offeringID uuid.UUID) (bool, error) {
+func (m *mockEntitlementService) HasActiveAccess(ctx context.Context, userID, offeringID string) (bool, error) {
 	return m.access[m.key(userID, offeringID)], nil
 }
 
-func (m *mockEntitlementService) GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID uuid.UUID) (uuid.UUID, error) {
+func (m *mockEntitlementService) GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID string) (string, error) {
 	k := m.key(userID, offeringID)
 	if !m.access[k] {
-		return uuid.Nil, apperrors.ErrNotFound
+		return "", apperrors.ErrNotFound
 	}
 	return m.txIDs[k], nil
 }
@@ -238,38 +238,38 @@ func (m *mockEntitlementService) GetActiveEntitlementForOffering(ctx context.Con
 
 type failingEntitlementService struct {
 	access map[string]bool
-	txIDs  map[string]uuid.UUID
+	txIDs  map[string]string
 }
 
 func newFailingEntitlementService() *failingEntitlementService {
 	return &failingEntitlementService{
 		access: make(map[string]bool),
-		txIDs:  make(map[string]uuid.UUID),
+		txIDs:  make(map[string]string),
 	}
 }
 
-func (m *failingEntitlementService) key(userID, offeringID uuid.UUID) string {
-	return userID.String() + ":" + offeringID.String()
+func (m *failingEntitlementService) key(userID, offeringID string) string {
+	return userID + ":" + offeringID
 }
 
-func (m *failingEntitlementService) GrantAccess(ctx context.Context, userID, offeringID, transactionID uuid.UUID) error {
+func (m *failingEntitlementService) GrantAccess(ctx context.Context, userID, offeringID, transactionID string) error {
 	return nil
 }
 
-func (m *failingEntitlementService) RevokeAccess(ctx context.Context, userID, offeringID uuid.UUID) error {
+func (m *failingEntitlementService) RevokeAccess(ctx context.Context, userID, offeringID string) error {
 	return errors.New("simulated revoke failure")
 }
 
-func (m *failingEntitlementService) HasActiveAccess(ctx context.Context, userID, offeringID uuid.UUID) (bool, error) {
+func (m *failingEntitlementService) HasActiveAccess(ctx context.Context, userID, offeringID string) (bool, error) {
 	return m.access[m.key(userID, offeringID)], nil
 }
 
-func (m *failingEntitlementService) GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID uuid.UUID) (uuid.UUID, error) {
+func (m *failingEntitlementService) GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID string) (string, error) {
 	k := m.key(userID, offeringID)
 	if txID, ok := m.txIDs[k]; ok {
 		return txID, nil
 	}
-	return uuid.Nil, apperrors.ErrNotFound
+	return "", apperrors.ErrNotFound
 }
 
 // Mock Payment Provider
@@ -309,8 +309,8 @@ func TestDeposit_Success(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -346,7 +346,7 @@ func TestDeposit_InactiveUser(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
+	userID := xid.New().String()
 	userSvc.activeUsers[userID] = false
 
 	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
@@ -365,8 +365,8 @@ func TestDeposit_WalletCreditFailed(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -397,7 +397,7 @@ func TestDeposit_InvalidAmount(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
+	userID := xid.New().String()
 	userSvc.activeUsers[userID] = true
 
 	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
@@ -423,8 +423,8 @@ func TestDeposit_IdempotencyKey_ReturnsCached(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
 	idempotencyKey := "deposit-123"
 
 	userSvc.activeUsers[userID] = true
@@ -464,8 +464,8 @@ func TestDeposit_ProviderDeclined(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{shouldFail: true}
 
-	userID := uuid.New()
-	walletID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -496,8 +496,8 @@ func TestDeposit_ProviderError(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &errorPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -525,7 +525,7 @@ func TestDeposit_WalletNotFound(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
+	userID := xid.New().String()
 	// Note: NOT setting walletSvc.walletIDs[userID] - user has no wallet
 
 	userSvc.activeUsers[userID] = true
@@ -546,9 +546,9 @@ func TestPurchase_Success(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -592,9 +592,9 @@ func TestPurchase_InsufficientFunds(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -618,8 +618,8 @@ func TestPurchase_InactiveUser(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = false // Inactive user
 
@@ -639,9 +639,9 @@ func TestPurchase_OfferingNotFound(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -664,9 +664,9 @@ func TestPurchase_OfferingNotAvailable(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -689,9 +689,9 @@ func TestPurchase_AlreadyOwned(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -717,9 +717,9 @@ func TestPurchase_IdempotencyKey_ReturnsCached(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 	idempotencyKey := "purchase-123"
 
 	userSvc.activeUsers[userID] = true
@@ -761,9 +761,9 @@ func TestPurchase_GrantAccessRaceCondition(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -797,10 +797,10 @@ func TestRefund_Success(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
-	purchaseTxID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
+	purchaseTxID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -854,10 +854,10 @@ func TestRefund_CreditFailed(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
-	purchaseTxID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
+	purchaseTxID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -900,10 +900,10 @@ func TestRefund_RevokeFailed(t *testing.T) {
 	entitleSvc := newFailingEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
-	purchaseTxID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
+	purchaseTxID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -952,9 +952,9 @@ func TestRefund_NoActiveEntitlement(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -977,10 +977,10 @@ func TestRefund_OriginalTxNotFound(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
-	purchaseTxID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
+	purchaseTxID := xid.New().String()
 
 	userSvc.activeUsers[userID] = true
 	walletSvc.walletIDs[userID] = walletID
@@ -1007,10 +1007,10 @@ func TestRefund_IdempotencyKey_ReturnsCached(t *testing.T) {
 	entitleSvc := newMockEntitlementService()
 	provider := &mockPaymentProvider{}
 
-	userID := uuid.New()
-	walletID := uuid.New()
-	offeringID := uuid.New()
-	purchaseTxID := uuid.New()
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	offeringID := xid.New().String()
+	purchaseTxID := xid.New().String()
 	idempotencyKey := "refund-123"
 
 	userSvc.activeUsers[userID] = true

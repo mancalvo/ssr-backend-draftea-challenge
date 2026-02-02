@@ -3,13 +3,12 @@ package services
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/domain"
 )
 
 type OfferingService interface {
-	GetPrice(ctx context.Context, offeringID uuid.UUID) (priceCents int64, err error)
-	IsAvailable(ctx context.Context, offeringID uuid.UUID) (bool, error)
+	GetPrice(ctx context.Context, offeringID string) (priceCents int64, err error)
+	IsAvailable(ctx context.Context, offeringID string) (bool, error)
 }
 
 type offeringService struct {
@@ -20,7 +19,7 @@ func NewOfferingService(offeringRepo domain.OfferingRepository) OfferingService 
 	return &offeringService{offeringRepo: offeringRepo}
 }
 
-func (s *offeringService) GetPrice(ctx context.Context, offeringID uuid.UUID) (int64, error) {
+func (s *offeringService) GetPrice(ctx context.Context, offeringID string) (int64, error) {
 	offering, err := s.offeringRepo.GetByID(ctx, offeringID)
 	if err != nil {
 		return 0, err
@@ -28,7 +27,7 @@ func (s *offeringService) GetPrice(ctx context.Context, offeringID uuid.UUID) (i
 	return offering.PriceCents, nil
 }
 
-func (s *offeringService) IsAvailable(ctx context.Context, offeringID uuid.UUID) (bool, error) {
+func (s *offeringService) IsAvailable(ctx context.Context, offeringID string) (bool, error) {
 	offering, err := s.offeringRepo.GetByID(ctx, offeringID)
 	if err != nil {
 		return false, err

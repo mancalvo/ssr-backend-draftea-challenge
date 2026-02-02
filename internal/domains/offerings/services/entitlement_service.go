@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
+	"github.com/rs/xid"
 )
 
 type EntitlementService interface {
-	GrantAccess(ctx context.Context, userID, offeringID, transactionID uuid.UUID) error
-	RevokeAccess(ctx context.Context, userID, offeringID uuid.UUID) error
-	HasActiveAccess(ctx context.Context, userID, offeringID uuid.UUID) (bool, error)
-	GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID uuid.UUID) (transactionID uuid.UUID, err error)
+	GrantAccess(ctx context.Context, userID, offeringID, transactionID string) error
+	RevokeAccess(ctx context.Context, userID, offeringID string) error
+	HasActiveAccess(ctx context.Context, userID, offeringID string) (bool, error)
+	GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID string) (transactionID string, err error)
 }
 
 type entitlementService struct {
@@ -24,9 +24,9 @@ func NewEntitlementService(entitlementRepo domain.EntitlementRepository) Entitle
 	return &entitlementService{entitlementRepo: entitlementRepo}
 }
 
-func (s *entitlementService) GrantAccess(ctx context.Context, userID, offeringID, transactionID uuid.UUID) error {
+func (s *entitlementService) GrantAccess(ctx context.Context, userID, offeringID, transactionID string) error {
 	entitlement := &domain.Entitlement{
-		ID:            uuid.New(),
+		ID:            xid.New().String(),
 		UserID:        userID,
 		OfferingID:    offeringID,
 		TransactionID: transactionID,
@@ -36,7 +36,7 @@ func (s *entitlementService) GrantAccess(ctx context.Context, userID, offeringID
 	return s.entitlementRepo.Create(ctx, entitlement)
 }
 
-func (s *entitlementService) RevokeAccess(ctx context.Context, userID, offeringID uuid.UUID) error {
+func (s *entitlementService) RevokeAccess(ctx context.Context, userID, offeringID string) error {
 	entitlements, err := s.entitlementRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return err
@@ -51,7 +51,7 @@ func (s *entitlementService) RevokeAccess(ctx context.Context, userID, offeringI
 	return apperrors.ErrNotFound
 }
 
-func (s *entitlementService) HasActiveAccess(ctx context.Context, userID, offeringID uuid.UUID) (bool, error) {
+func (s *entitlementService) HasActiveAccess(ctx context.Context, userID, offeringID string) (bool, error) {
 	entitlements, err := s.entitlementRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return false, err
@@ -66,10 +66,10 @@ func (s *entitlementService) HasActiveAccess(ctx context.Context, userID, offeri
 	return false, nil
 }
 
-func (s *entitlementService) GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID uuid.UUID) (uuid.UUID, error) {
+func (s *entitlementService) GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID string) (string, error) {
 	entitlements, err := s.entitlementRepo.GetByUserID(ctx, userID)
 	if err != nil {
-		return uuid.Nil, err
+		return "", err
 	}
 
 	for _, e := range entitlements {
@@ -78,5 +78,5 @@ func (s *entitlementService) GetActiveEntitlementForOffering(ctx context.Context
 		}
 	}
 
-	return uuid.Nil, apperrors.ErrNotFound
+	return "", apperrors.ErrNotFound
 }

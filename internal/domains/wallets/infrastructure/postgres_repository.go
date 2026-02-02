@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/wallets/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
@@ -19,7 +18,7 @@ func NewPostgresWalletRepository(db database.Executor) *PostgresWalletRepository
 	return &PostgresWalletRepository{db: db}
 }
 
-func (r *PostgresWalletRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Wallet, error) {
+func (r *PostgresWalletRepository) GetByUserID(ctx context.Context, userID string) (*domain.Wallet, error) {
 	query := `
 		SELECT id, user_id, balance_cents, updated_at
 		FROM wallets
@@ -45,7 +44,7 @@ func (r *PostgresWalletRepository) GetByUserID(ctx context.Context, userID uuid.
 }
 
 // Credit atomically adds amount to wallet balance
-func (r *PostgresWalletRepository) Credit(ctx context.Context, walletID uuid.UUID, amount int64) error {
+func (r *PostgresWalletRepository) Credit(ctx context.Context, walletID string, amount int64) error {
 	query := `
 		UPDATE wallets
 		SET balance_cents = balance_cents + $1, updated_at = $2
@@ -70,7 +69,7 @@ func (r *PostgresWalletRepository) Credit(ctx context.Context, walletID uuid.UUI
 
 // Debit atomically subtracts amount from wallet balance
 // Returns ErrInsufficientFunds if balance would go negative
-func (r *PostgresWalletRepository) Debit(ctx context.Context, walletID uuid.UUID, amount int64) error {
+func (r *PostgresWalletRepository) Debit(ctx context.Context, walletID string, amount int64) error {
 	query := `
 		UPDATE wallets
 		SET balance_cents = balance_cents - $1, updated_at = $2
