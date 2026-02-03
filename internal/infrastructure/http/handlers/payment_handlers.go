@@ -1,4 +1,4 @@
-package routes
+package handlers
 
 import (
 	"errors"
@@ -185,7 +185,7 @@ func (h *PaymentHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, pageSize := parsePageParams(r)
+	page, pageSize := ParsePageParams(r)
 
 	paginated, err := h.paymentUC.GetHistory(r.Context(), userIDStr, page, pageSize)
 	if err != nil {

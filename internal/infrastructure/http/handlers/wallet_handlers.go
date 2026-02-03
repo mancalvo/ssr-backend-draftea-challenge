@@ -1,4 +1,4 @@
-package routes
+package handlers
 
 import (
 	"net/http"
@@ -56,8 +56,8 @@ func (h *WalletHandlers) GetBalance(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parsePageParams extracts pagination parameters from query string
-func parsePageParams(r *http.Request) (page, pageSize int) {
+// ParsePageParams extracts pagination parameters from query string
+func ParsePageParams(r *http.Request) (page, pageSize int) {
 	page = 1
 	pageSize = 20
 

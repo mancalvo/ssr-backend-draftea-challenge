@@ -10,8 +10,7 @@ import (
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
-	httpserver "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http"
-	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/routes"
+	infrahttp "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/logger"
 )
 
@@ -28,18 +27,18 @@ func main() {
 	defer db.Close()
 
 	// Build router with dependencies
-	router := routes.NewRouter(db)
+	router := infrahttp.NewRouter(db)
 
 	// Apply global middleware
-	handler := httpserver.Chain(
+	handler := infrahttp.Chain(
 		router,
-		httpserver.ContentType,
-		httpserver.Logger,
-		httpserver.Recoverer,
+		infrahttp.ContentType,
+		infrahttp.Logger,
+		infrahttp.Recoverer,
 	)
 
 	// Create and start server
-	server := httpserver.NewServer(":"+cfg.Server.Port, handler)
+	server := infrahttp.NewServer(":"+cfg.Server.Port, handler)
 
 	// Graceful shutdown
 	go func() {

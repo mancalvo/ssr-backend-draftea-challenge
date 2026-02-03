@@ -1,4 +1,4 @@
-package routes
+package http
 
 import (
 	"net/http"
@@ -12,6 +12,7 @@ import (
 	walletsInfra "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/wallets/infrastructure"
 	walletsSvc "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/wallets/services"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http/handlers"
 )
 
 func NewRouter(db *database.DB) http.Handler {
@@ -48,13 +49,13 @@ func NewRouter(db *database.DB) http.Handler {
 	)
 
 	// Initialize handlers
-	walletHandlers := NewWalletHandlers(walletRepo, userRepo)
-	paymentHandlers := NewPaymentHandlers(paymentUC)
-	entitlementHandlers := NewEntitlementHandlers(entitlementRepo, offeringRepo)
+	walletHandlers := handlers.NewWalletHandlers(walletRepo, userRepo)
+	paymentHandlers := handlers.NewPaymentHandlers(paymentUC)
+	entitlementHandlers := handlers.NewEntitlementHandlers(entitlementRepo, offeringRepo)
 
 	// Health check
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		handlers.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// Wallet routes
