@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/deposit"
@@ -361,14 +362,132 @@ func TestDeposit_WalletNotFound(t *testing.T) {
 	provider := &mockPaymentProvider{}
 
 	userID := xid.New().String()
-	// Note: NOT setting walletSvc.walletIDs[userID] - user has no wallet
 
 	userSvc.activeUsers[userID] = true
+	// Don't set walletID - simulates wallet not found
 
 	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
 
 	_, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
-	if err != apperrors.ErrNotFound {
-		t.Errorf("expected ErrNotFound for wallet not found, got: %v", err)
+	if !errors.Is(err, apperrors.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
 	}
+}
+
+// mockRaceConditionRepo simulates a race condition where two concurrent requests
+// try to create a transaction with the same idempotency key simultaneously
+type mockRaceConditionRepo struct {
+	transactions     map[string]*domain.Transaction
+	idempotencyKey   string
+	existingTx       *domain.Transaction
+	idempotencyCalls int // Track number of calls to GetByUserAndIdempotencyKey
+}
+
+func newMockRaceConditionRepo(idempotencyKey string, existingTx *domain.Transaction) *mockRaceConditionRepo {
+	return &mockRaceConditionRepo{
+		transactions:     make(map[string]*domain.Transaction),
+		idempotencyKey:   idempotencyKey,
+		existingTx:       existingTx,
+		idempotencyCalls: 0,
+	}
+}
+
+func (m *mockRaceConditionRepo) Create(ctx context.Context, tx *domain.Transaction) error {
+	// Simulate race condition: return ErrAlreadyExists when idempotency key matches
+	if tx.IdempotencyKey != nil && *tx.IdempotencyKey == m.idempotencyKey {
+		return apperrors.ErrAlreadyExists
+	}
+	m.transactions[tx.ID] = tx
+	return nil
+}
+
+func (m *mockRaceConditionRepo) GetByID(ctx context.Context, id string) (*domain.Transaction, error) {
+	if tx, ok := m.transactions[id]; ok {
+		return tx, nil
+	}
+	return nil, apperrors.ErrNotFound
+}
+
+func (m *mockRaceConditionRepo) UpdateStatus(ctx context.Context, id string, status domain.TransactionStatus) error {
+	if tx, ok := m.transactions[id]; ok {
+		tx.Status = status
+		return nil
+	}
+	return apperrors.ErrNotFound
+}
+
+func (m *mockRaceConditionRepo) GetByUserAndIdempotencyKey(ctx context.Context, userID string, key string) (*domain.Transaction, error) {
+	// Simulate race condition:
+	// First call (initial check) returns not found
+	// Second call (after Create fails with ErrAlreadyExists) returns the existing transaction
+	m.idempotencyCalls++
+
+	if key == m.idempotencyKey && m.existingTx != nil {
+		// Second call - return the transaction that was just created by another request
+		if m.idempotencyCalls > 1 {
+			return m.existingTx, nil
+		}
+		// First call - race condition, transaction not visible yet
+		return nil, apperrors.ErrNotFound
+	}
+	return nil, apperrors.ErrNotFound
+}
+
+func (m *mockRaceConditionRepo) GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
+	return nil, nil
+}
+
+func TestDeposit_RaceCondition_IdempotencyKey(t *testing.T) {
+	// Setup: Create an existing transaction that another concurrent request already created
+	userID := xid.New().String()
+	walletID := xid.New().String()
+	idempotencyKey := "race-condition-key-123"
+
+	existingTx := &domain.Transaction{
+		ID:             xid.New().String(),
+		UserID:         userID,
+		WalletID:       walletID,
+		Type:           domain.TxDeposit,
+		Amount:         10000,
+		Status:         domain.TxCompleted,
+		IdempotencyKey: &idempotencyKey,
+		ProviderRef:    strPtr("ref_existing"),
+		CreatedAt:      time.Now(),
+	}
+
+	// Create repo that simulates race condition
+	txRepo := newMockRaceConditionRepo(idempotencyKey, existingTx)
+
+	walletSvc := newMockWalletService()
+	userSvc := newMockUserService()
+	provider := &mockPaymentProvider{}
+
+	userSvc.activeUsers[userID] = true
+	walletSvc.walletIDs[userID] = walletID
+	walletSvc.balances[userID] = 50000 // Already has balance from the existing deposit
+
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+
+	// Execute - should handle the race condition gracefully
+	tx, err := uc.Execute(context.Background(), userID, 10000, "tok_test", &idempotencyKey)
+
+	if err != nil {
+		t.Fatalf("expected no error when handling race condition, got: %v", err)
+	}
+
+	// Should return the existing transaction, not create a new one
+	if tx.ID != existingTx.ID {
+		t.Errorf("expected existing transaction ID %v, got %v", existingTx.ID, tx.ID)
+	}
+
+	// Wallet balance should remain unchanged (no double credit)
+	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
+	if balance != 50000 {
+		t.Errorf("expected wallet balance 50000 (no double credit), got %d", balance)
+	}
+}
+
+// Helper function
+func strPtr(s string) *string {
+	return &s
 }

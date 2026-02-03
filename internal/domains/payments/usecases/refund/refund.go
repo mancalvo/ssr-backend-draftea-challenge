@@ -6,15 +6,17 @@ import (
 	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
-	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/shared/uow"
+	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 	"github.com/rs/xid"
 )
 
+// UseCase defines the interface for refund operations.
 type UseCase interface {
 	Execute(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error)
 }
 
+// PaymentRefundUseCase orchestrates refund processing.
 type PaymentRefundUseCase struct {
 	txRunner   uow.TransactionRunner
 	txRepo     domain.TransactionRepository
@@ -22,6 +24,7 @@ type PaymentRefundUseCase struct {
 	entitleSvc domain.EntitlementService
 }
 
+// New creates a new PaymentRefundUseCase with the required dependencies.
 func New(
 	txRunner uow.TransactionRunner,
 	txRepo domain.TransactionRepository,
@@ -36,21 +39,58 @@ func New(
 	}
 }
 
-// Execute reverses a purchase: credits wallet and revokes entitlement
-// Uses transaction to ensure atomicity of credit + revoke operations
+// Execute reverses a purchase: credits wallet and revokes entitlement.
+// Uses transaction to ensure atomicity of credit + revoke operations.
 func (uc *PaymentRefundUseCase) Execute(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error) {
-	// Check idempotency key first (scoped by user for security) - outside transaction
-	if idempotencyKey != nil && *idempotencyKey != "" {
-		existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
-		if err == nil {
-			return existing, nil
-		}
-		if !errors.Is(err, apperrors.ErrNotFound) {
-			return nil, err
-		}
+	// Step 1: Check idempotency (outside transaction for early exit)
+	if existing, err := uc.checkIdempotency(ctx, userID, idempotencyKey); err != nil || existing != nil {
+		return existing, err
 	}
 
-	// Get the original transaction ID for this user+offering via entitlement
+	// Step 2: Get original purchase transaction
+	originalTx, err := uc.getOriginalTransaction(ctx, userID, offeringID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 3: Get wallet ID
+	_, walletID, err := uc.walletSvc.GetBalance(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 4: Prepare refund transaction
+	refundTx := uc.prepareRefundTransaction(userID, walletID, offeringID, originalTx.Amount, idempotencyKey)
+
+	// Step 5: Execute atomic refund operations
+	if err := uc.executeRefundTransaction(ctx, userID, offeringID, originalTx.Amount, refundTx, idempotencyKey); err != nil {
+		return uc.handleTransactionError(ctx, userID, idempotencyKey, err)
+	}
+
+	return refundTx, nil
+}
+
+// checkIdempotency checks for existing transaction with same idempotency key.
+func (uc *PaymentRefundUseCase) checkIdempotency(ctx context.Context, userID string, idempotencyKey *string) (*domain.Transaction, error) {
+	if idempotencyKey == nil || *idempotencyKey == "" {
+		return nil, nil
+	}
+
+	existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
+	if err == nil {
+		return existing, nil
+	}
+
+	if !errors.Is(err, apperrors.ErrNotFound) {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// getOriginalTransaction retrieves the original purchase transaction for refund.
+func (uc *PaymentRefundUseCase) getOriginalTransaction(ctx context.Context, userID, offeringID string) (*domain.Transaction, error) {
+	// Get the original transaction ID via entitlement
 	originalTxID, err := uc.entitleSvc.GetActiveEntitlementForOffering(ctx, userID, offeringID)
 	if err != nil {
 		return nil, err // No active entitlement found
@@ -62,27 +102,27 @@ func (uc *PaymentRefundUseCase) Execute(ctx context.Context, userID, offeringID 
 		return nil, err
 	}
 
-	_, walletID, err := uc.walletSvc.GetBalance(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
+	return originalTx, nil
+}
 
-	// Prepare refund transaction
-	refundTxID := xid.New().String()
-	refundTx := &domain.Transaction{
-		ID:             refundTxID,
+// prepareRefundTransaction creates a new refund transaction entity.
+func (uc *PaymentRefundUseCase) prepareRefundTransaction(userID, walletID, offeringID string, amount int64, idempotencyKey *string) *domain.Transaction {
+	return &domain.Transaction{
+		ID:             xid.New().String(),
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxRefund,
-		Amount:         originalTx.Amount,
+		Amount:         amount,
 		Status:         domain.TxCompleted, // Will be committed as completed if transaction succeeds
 		OfferingID:     &offeringID,
 		IdempotencyKey: idempotencyKey,
 		CreatedAt:      time.Now(),
 	}
+}
 
-	// Critical operations wrapped in transaction for atomicity
-	err = uc.txRunner.RunInTransaction(ctx, func(txCtx context.Context) error {
+// executeRefundTransaction executes the atomic refund operations within a transaction.
+func (uc *PaymentRefundUseCase) executeRefundTransaction(ctx context.Context, userID, offeringID string, amount int64, refundTx *domain.Transaction, idempotencyKey *string) error {
+	return uc.txRunner.RunInTransaction(ctx, func(txCtx context.Context) error {
 		// Create refund transaction record
 		if err := uc.txRepo.Create(txCtx, refundTx); err != nil {
 			if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
@@ -92,7 +132,7 @@ func (uc *PaymentRefundUseCase) Execute(ctx context.Context, userID, offeringID 
 		}
 
 		// Credit wallet
-		if err := uc.walletSvc.Credit(txCtx, userID, originalTx.Amount); err != nil {
+		if err := uc.walletSvc.Credit(txCtx, userID, amount); err != nil {
 			return err
 		}
 
@@ -103,17 +143,16 @@ func (uc *PaymentRefundUseCase) Execute(ctx context.Context, userID, offeringID 
 
 		return nil
 	})
+}
 
-	if err != nil {
-		// Handle idempotency collision that happened inside transaction
-		if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
-			existing, _ := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
-			if existing != nil {
-				return existing, nil
-			}
+// handleTransactionError handles errors from the refund transaction.
+func (uc *PaymentRefundUseCase) handleTransactionError(ctx context.Context, userID string, idempotencyKey *string, err error) (*domain.Transaction, error) {
+	// Check for idempotency collision
+	if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
+		existing, _ := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
+		if existing != nil {
+			return existing, nil
 		}
-		return nil, err
 	}
-
-	return refundTx, nil
+	return nil, err
 }

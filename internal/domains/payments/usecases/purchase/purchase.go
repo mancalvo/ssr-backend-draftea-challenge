@@ -6,15 +6,17 @@ import (
 	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
-	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/shared/uow"
+	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 	"github.com/rs/xid"
 )
 
+// UseCase defines the interface for purchase operations.
 type UseCase interface {
 	Execute(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error)
 }
 
+// PaymentPurchaseUseCase orchestrates purchase processing.
 type PaymentPurchaseUseCase struct {
 	txRunner    uow.TransactionRunner
 	txRepo      domain.TransactionRepository
@@ -24,6 +26,7 @@ type PaymentPurchaseUseCase struct {
 	entitleSvc  domain.EntitlementService
 }
 
+// New creates a new PaymentPurchaseUseCase with the required dependencies.
 func New(
 	txRunner uow.TransactionRunner,
 	txRepo domain.TransactionRepository,
@@ -42,61 +45,115 @@ func New(
 	}
 }
 
-// Execute debits wallet and grants access to an offering
-// Uses transaction to ensure atomicity of debit + transaction record + entitlement grant
+// Execute debits wallet and grants access to an offering.
+// Uses transaction to ensure atomicity of debit + transaction record + entitlement grant.
 func (uc *PaymentPurchaseUseCase) Execute(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error) {
-	// Check idempotency key first (scoped by user for security) - outside transaction
-	if idempotencyKey != nil && *idempotencyKey != "" {
-		existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
-		if err == nil {
-			return existing, nil
-		}
-		if !errors.Is(err, apperrors.ErrNotFound) {
-			return nil, err
-		}
+	// Step 1: Check idempotency (outside transaction for early exit)
+	if existing, err := uc.checkIdempotency(ctx, userID, idempotencyKey); err != nil || existing != nil {
+		return existing, err
 	}
 
-	// Validation checks - outside transaction for early exit
-	isActive, err := uc.userSvc.IsActive(ctx, userID)
-	if err != nil {
+	// Step 2: Validate user is active
+	if err := uc.validateUser(ctx, userID); err != nil {
 		return nil, err
 	}
-	if !isActive {
-		return nil, apperrors.ErrUserNotActive
-	}
 
-	isAvailable, err := uc.offeringSvc.IsAvailable(ctx, offeringID)
-	if err != nil {
+	// Step 3: Validate offering is available
+	if err := uc.validateOffering(ctx, offeringID); err != nil {
 		return nil, err
 	}
-	if !isAvailable {
-		return nil, apperrors.ErrNotFound
-	}
 
-	// Check if user already owns this offering - outside transaction for early exit
-	hasAccess, err := uc.entitleSvc.HasActiveAccess(ctx, userID, offeringID)
-	if err != nil {
+	// Step 4: Check user doesn't already own this offering
+	if err := uc.checkNotAlreadyOwned(ctx, userID, offeringID); err != nil {
 		return nil, err
 	}
-	if hasAccess {
-		return nil, apperrors.ErrAlreadyOwned
-	}
 
-	price, err := uc.offeringSvc.GetPrice(ctx, offeringID)
+	// Step 5: Get offering price
+	price, err := uc.getOfferingPrice(ctx, offeringID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get wallet ID before transaction
+	// Step 6: Get wallet ID
 	_, walletID, err := uc.walletSvc.GetBalance(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Prepare transaction record
-	txID := xid.New().String()
-	tx := &domain.Transaction{
-		ID:             txID,
+	// Step 7: Prepare transaction record
+	tx := uc.prepareTransaction(userID, walletID, offeringID, price, idempotencyKey)
+
+	// Step 8: Execute atomic operations within transaction
+	if err := uc.executePurchaseTransaction(ctx, userID, offeringID, price, tx, idempotencyKey); err != nil {
+		return uc.handleTransactionError(ctx, userID, idempotencyKey, err)
+	}
+
+	return tx, nil
+}
+
+// checkIdempotency checks for existing transaction with same idempotency key.
+func (uc *PaymentPurchaseUseCase) checkIdempotency(ctx context.Context, userID string, idempotencyKey *string) (*domain.Transaction, error) {
+	if idempotencyKey == nil || *idempotencyKey == "" {
+		return nil, nil
+	}
+
+	existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
+	if err == nil {
+		return existing, nil
+	}
+
+	if !errors.Is(err, apperrors.ErrNotFound) {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+// validateUser checks if the user account is active.
+func (uc *PaymentPurchaseUseCase) validateUser(ctx context.Context, userID string) error {
+	isActive, err := uc.userSvc.IsActive(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !isActive {
+		return apperrors.ErrUserNotActive
+	}
+	return nil
+}
+
+// validateOffering checks if the offering is available.
+func (uc *PaymentPurchaseUseCase) validateOffering(ctx context.Context, offeringID string) error {
+	isAvailable, err := uc.offeringSvc.IsAvailable(ctx, offeringID)
+	if err != nil {
+		return err
+	}
+	if !isAvailable {
+		return apperrors.ErrNotFound
+	}
+	return nil
+}
+
+// checkNotAlreadyOwned verifies the user doesn't already own this offering.
+func (uc *PaymentPurchaseUseCase) checkNotAlreadyOwned(ctx context.Context, userID, offeringID string) error {
+	hasAccess, err := uc.entitleSvc.HasActiveAccess(ctx, userID, offeringID)
+	if err != nil {
+		return err
+	}
+	if hasAccess {
+		return apperrors.ErrAlreadyOwned
+	}
+	return nil
+}
+
+// getOfferingPrice retrieves the price for an offering.
+func (uc *PaymentPurchaseUseCase) getOfferingPrice(ctx context.Context, offeringID string) (int64, error) {
+	return uc.offeringSvc.GetPrice(ctx, offeringID)
+}
+
+// prepareTransaction creates a new transaction entity for the purchase.
+func (uc *PaymentPurchaseUseCase) prepareTransaction(userID, walletID, offeringID string, price int64, idempotencyKey *string) *domain.Transaction {
+	return &domain.Transaction{
+		ID:             xid.New().String(),
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxPurchase,
@@ -106,10 +163,12 @@ func (uc *PaymentPurchaseUseCase) Execute(ctx context.Context, userID, offeringI
 		IdempotencyKey: idempotencyKey,
 		CreatedAt:      time.Now(),
 	}
+}
 
-	// Critical operations wrapped in transaction for atomicity
-	err = uc.txRunner.RunInTransaction(ctx, func(txCtx context.Context) error {
-		// Debit wallet (service handles insufficient funds check)
+// executePurchaseTransaction executes the atomic purchase operations within a transaction.
+func (uc *PaymentPurchaseUseCase) executePurchaseTransaction(ctx context.Context, userID, offeringID string, price int64, tx *domain.Transaction, idempotencyKey *string) error {
+	return uc.txRunner.RunInTransaction(ctx, func(txCtx context.Context) error {
+		// Debit wallet
 		if err := uc.walletSvc.Debit(txCtx, userID, price); err != nil {
 			return err
 		}
@@ -117,7 +176,6 @@ func (uc *PaymentPurchaseUseCase) Execute(ctx context.Context, userID, offeringI
 		// Create transaction record
 		if err := uc.txRepo.Create(txCtx, tx); err != nil {
 			if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
-				// Idempotency key collision - will be handled after transaction
 				return err
 			}
 			return err
@@ -130,17 +188,16 @@ func (uc *PaymentPurchaseUseCase) Execute(ctx context.Context, userID, offeringI
 
 		return nil
 	})
+}
 
-	if err != nil {
-		// Handle idempotency collision that happened inside transaction
-		if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
-			existing, _ := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
-			if existing != nil {
-				return existing, nil
-			}
+// handleTransactionError handles errors from the purchase transaction.
+func (uc *PaymentPurchaseUseCase) handleTransactionError(ctx context.Context, userID string, idempotencyKey *string, err error) (*domain.Transaction, error) {
+	// Check for idempotency collision
+	if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
+		existing, _ := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
+		if existing != nil {
+			return existing, nil
 		}
-		return nil, err
 	}
-
-	return tx, nil
+	return nil, err
 }
