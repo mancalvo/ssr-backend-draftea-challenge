@@ -4,17 +4,33 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/deposit"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/history"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/purchase"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/refund"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 	"github.com/rs/xid"
 )
 
 type PaymentHandlers struct {
-	paymentUC usecases.PaymentUseCases
+	depositUC  deposit.UseCase
+	purchaseUC purchase.UseCase
+	refundUC   refund.UseCase
+	historyUC  history.UseCase
 }
 
-func NewPaymentHandlers(paymentUC usecases.PaymentUseCases) *PaymentHandlers {
-	return &PaymentHandlers{paymentUC: paymentUC}
+func NewPaymentHandlers(
+	depositUC deposit.UseCase,
+	purchaseUC purchase.UseCase,
+	refundUC refund.UseCase,
+	historyUC history.UseCase,
+) *PaymentHandlers {
+	return &PaymentHandlers{
+		depositUC:  depositUC,
+		purchaseUC: purchaseUC,
+		refundUC:   refundUC,
+		historyUC:  historyUC,
+	}
 }
 
 // DepositRequest represents the deposit request body
@@ -48,7 +64,7 @@ func (h *PaymentHandlers) Deposit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := h.paymentUC.Deposit(r.Context(), req.UserID, req.Amount, req.CardToken, req.IdempotencyKey)
+	tx, err := h.depositUC.Execute(r.Context(), req.UserID, req.Amount, req.CardToken, req.IdempotencyKey)
 	if err != nil {
 		// Special case: wallet credit failed but payment was received
 		// Return 202 with transaction data so user knows payment went through
@@ -104,7 +120,7 @@ func (h *PaymentHandlers) Purchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := h.paymentUC.Purchase(r.Context(), req.UserID, req.OfferingID, req.IdempotencyKey)
+	tx, err := h.purchaseUC.Execute(r.Context(), req.UserID, req.OfferingID, req.IdempotencyKey)
 	if err != nil {
 		JSONError(w, err)
 		return
@@ -146,7 +162,7 @@ func (h *PaymentHandlers) Refund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	refundTx, err := h.paymentUC.Refund(r.Context(), req.UserID, req.OfferingID, req.IdempotencyKey)
+	refundTx, err := h.refundUC.Execute(r.Context(), req.UserID, req.OfferingID, req.IdempotencyKey)
 	if err != nil {
 		// Handle partial success cases (202)
 		if (errors.Is(err, apperrors.ErrWalletCreditFailed) || errors.Is(err, apperrors.ErrRevokeFailed)) && refundTx != nil {
@@ -187,7 +203,7 @@ func (h *PaymentHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	page, pageSize := ParsePageParams(r)
 
-	paginated, err := h.paymentUC.GetHistory(r.Context(), userIDStr, page, pageSize)
+	paginated, err := h.historyUC.Execute(r.Context(), userIDStr, page, pageSize)
 	if err != nil {
 		if err == apperrors.ErrNotFound {
 			JSONErrorWithCode(w, "user not found", "USER_NOT_FOUND", http.StatusNotFound)

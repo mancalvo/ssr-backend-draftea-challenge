@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/app"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 	infrahttp "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http"
@@ -26,8 +27,15 @@ func main() {
 	}
 	defer db.Close()
 
+	// Initialize dependencies
+	container := app.NewContainer(db)
+
 	// Build router with dependencies
-	router := infrahttp.NewRouter(db)
+	router := infrahttp.NewRouter(
+		container.WalletHandlers,
+		container.PaymentHandlers,
+		container.EntitlementHandlers,
+	)
 
 	// Apply global middleware
 	handler := infrahttp.Chain(
@@ -65,3 +73,4 @@ func main() {
 
 	logger.Info("server exited gracefully")
 }
+
