@@ -6,6 +6,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/shared/uow"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/logger"
 )
 
@@ -79,4 +80,51 @@ func (db *DB) WithTx(ctx context.Context, fn func(tx *Tx) error) error {
 	}
 
 	return tx.Commit()
+}
+
+// Transaction context management
+
+type txContextKey struct{}
+
+// ContextWithTx stores a transaction in context for repositories to use
+func ContextWithTx(ctx context.Context, tx *Tx) context.Context {
+	return context.WithValue(ctx, txContextKey{}, tx)
+}
+
+// TxFromContext retrieves a transaction from context, or nil if none
+func TxFromContext(ctx context.Context) *Tx {
+	if tx, ok := ctx.Value(txContextKey{}).(*Tx); ok {
+		return tx
+	}
+	return nil
+}
+
+// ExecutorFromContext returns the transaction from context if present, otherwise the provided db
+func ExecutorFromContext(ctx context.Context, db Executor) Executor {
+	if tx := TxFromContext(ctx); tx != nil {
+		return tx
+	}
+	return db
+}
+
+// TransactionRunner implements uow.TransactionRunner using PostgreSQL transactions
+type TransactionRunner struct {
+	db *DB
+}
+
+// Compile-time check that TransactionRunner implements uow.TransactionRunner
+var _ uow.TransactionRunner = (*TransactionRunner)(nil)
+
+// NewTransactionRunner creates a new TransactionRunner
+func NewTransactionRunner(db *DB) *TransactionRunner {
+	return &TransactionRunner{db: db}
+}
+
+// RunInTransaction executes fn within a transaction
+// The context passed to fn contains the transaction for repositories to use
+func (r *TransactionRunner) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return r.db.WithTx(ctx, func(tx *Tx) error {
+		txCtx := ContextWithTx(ctx, tx)
+		return fn(txCtx)
+	})
 }

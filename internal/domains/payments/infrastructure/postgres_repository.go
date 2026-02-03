@@ -19,7 +19,6 @@ func NewPostgresTransactionRepository(db database.Executor) *PostgresTransaction
 	return &PostgresTransactionRepository{db: db}
 }
 
-// isUniqueViolation checks if error is a PostgreSQL unique constraint violation
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -28,13 +27,18 @@ func isUniqueViolation(err error) bool {
 	return false
 }
 
+// getExecutor returns the transaction from context if present, otherwise the default db
+func (r *PostgresTransactionRepository) getExecutor(ctx context.Context) database.Executor {
+	return database.ExecutorFromContext(ctx, r.db)
+}
+
 func (r *PostgresTransactionRepository) Create(ctx context.Context, tx *domain.Transaction) error {
 	query := `
 		INSERT INTO transactions (id, user_id, wallet_id, type, amount_cents, status, offering_id, provider_ref, idempotency_key, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		tx.ID,
 		tx.UserID,
 		tx.WalletID,
@@ -57,7 +61,7 @@ func (r *PostgresTransactionRepository) Create(ctx context.Context, tx *domain.T
 func (r *PostgresTransactionRepository) UpdateStatus(ctx context.Context, id string, status domain.TransactionStatus) error {
 	query := `UPDATE transactions SET status = $1 WHERE id = $2`
 
-	result, err := r.db.ExecContext(ctx, query, status, id)
+	result, err := r.getExecutor(ctx).ExecContext(ctx, query, status, id)
 	if err != nil {
 		return err
 	}
@@ -81,7 +85,7 @@ func (r *PostgresTransactionRepository) GetByID(ctx context.Context, id string) 
 	`
 
 	var tx domain.Transaction
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.getExecutor(ctx).QueryRowContext(ctx, query, id).Scan(
 		&tx.ID,
 		&tx.UserID,
 		&tx.WalletID,
@@ -112,7 +116,7 @@ func (r *PostgresTransactionRepository) GetByUserAndIdempotencyKey(ctx context.C
 	`
 
 	var tx domain.Transaction
-	err := r.db.QueryRowContext(ctx, query, userID, key).Scan(
+	err := r.getExecutor(ctx).QueryRowContext(ctx, query, userID, key).Scan(
 		&tx.ID,
 		&tx.UserID,
 		&tx.WalletID,
@@ -138,8 +142,9 @@ func (r *PostgresTransactionRepository) GetByUserAndIdempotencyKey(ctx context.C
 func (r *PostgresTransactionRepository) GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
 	// Count total
 	countQuery := `SELECT COUNT(*) FROM transactions WHERE user_id = $1`
+	exec := r.getExecutor(ctx)
 	var totalCount int
-	if err := r.db.QueryRowContext(ctx, countQuery, userID).Scan(&totalCount); err != nil {
+	if err := exec.QueryRowContext(ctx, countQuery, userID).Scan(&totalCount); err != nil {
 		return nil, err
 	}
 
@@ -159,7 +164,7 @@ func (r *PostgresTransactionRepository) GetByUserID(ctx context.Context, userID 
 		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, userID, pageSize, offset)
+	rows, err := exec.QueryContext(ctx, query, userID, pageSize, offset)
 	if err != nil {
 		return nil, err
 	}

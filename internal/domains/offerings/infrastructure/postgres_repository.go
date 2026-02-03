@@ -31,6 +31,11 @@ func NewPostgresOfferingRepository(db database.Executor) *PostgresOfferingReposi
 	return &PostgresOfferingRepository{db: db}
 }
 
+// getExecutor returns the transaction from context if present, otherwise the default db
+func (r *PostgresOfferingRepository) getExecutor(ctx context.Context) database.Executor {
+	return database.ExecutorFromContext(ctx, r.db)
+}
+
 func (r *PostgresOfferingRepository) GetByID(ctx context.Context, id string) (*domain.Offering, error) {
 	query := `
 		SELECT id, name, description, price_cents, duration_days, is_active, created_at
@@ -39,7 +44,7 @@ func (r *PostgresOfferingRepository) GetByID(ctx context.Context, id string) (*d
 	`
 
 	var offering domain.Offering
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.getExecutor(ctx).QueryRowContext(ctx, query, id).Scan(
 		&offering.ID,
 		&offering.Name,
 		&offering.Description,
@@ -67,7 +72,7 @@ func (r *PostgresOfferingRepository) List(ctx context.Context) ([]domain.Offerin
 		ORDER BY name
 	`
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.getExecutor(ctx).QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -103,13 +108,18 @@ func NewPostgresEntitlementRepository(db database.Executor) *PostgresEntitlement
 	return &PostgresEntitlementRepository{db: db}
 }
 
+// getExecutor returns the transaction from context if present, otherwise the default db
+func (r *PostgresEntitlementRepository) getExecutor(ctx context.Context) database.Executor {
+	return database.ExecutorFromContext(ctx, r.db)
+}
+
 func (r *PostgresEntitlementRepository) Create(ctx context.Context, ent *domain.Entitlement) error {
 	query := `
 		INSERT INTO entitlements (id, user_id, offering_id, transaction_id, status, granted_at, revoked_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		ent.ID,
 		ent.UserID,
 		ent.OfferingID,
@@ -134,7 +144,7 @@ func (r *PostgresEntitlementRepository) GetByUserID(ctx context.Context, userID 
 		ORDER BY granted_at DESC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	rows, err := r.getExecutor(ctx).QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +178,7 @@ func (r *PostgresEntitlementRepository) GetByTransactionID(ctx context.Context, 
 	`
 
 	var e domain.Entitlement
-	err := r.db.QueryRowContext(ctx, query, txID).Scan(
+	err := r.getExecutor(ctx).QueryRowContext(ctx, query, txID).Scan(
 		&e.ID,
 		&e.UserID,
 		&e.OfferingID,
@@ -195,7 +205,7 @@ func (r *PostgresEntitlementRepository) Revoke(ctx context.Context, id string) e
 		WHERE id = $3
 	`
 
-	result, err := r.db.ExecContext(ctx, query, domain.EntitlementRevoked, time.Now(), id)
+	result, err := r.getExecutor(ctx).ExecContext(ctx, query, domain.EntitlementRevoked, time.Now(), id)
 	if err != nil {
 		return err
 	}

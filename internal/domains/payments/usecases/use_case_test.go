@@ -12,6 +12,13 @@ import (
 	"github.com/rs/xid"
 )
 
+// Mock TransactionRunner - executes function directly (no-op transaction for unit tests)
+type mockTransactionRunner struct{}
+
+func (m *mockTransactionRunner) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
+}
+
 // Mock Transaction Repository
 
 type mockTransactionRepo struct {
@@ -316,7 +323,7 @@ func TestDeposit_Success(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	tx, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
 	if err != nil {
@@ -349,7 +356,7 @@ func TestDeposit_InactiveUser(t *testing.T) {
 	userID := xid.New().String()
 	userSvc.activeUsers[userID] = false
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
 	if err != apperrors.ErrUserNotActive {
@@ -372,7 +379,7 @@ func TestDeposit_WalletCreditFailed(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	tx, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
 
@@ -400,7 +407,7 @@ func TestDeposit_InvalidAmount(t *testing.T) {
 	userID := xid.New().String()
 	userSvc.activeUsers[userID] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	// Test zero amount
 	_, err := uc.Deposit(context.Background(), userID, 0, "tok_test", nil)
@@ -431,7 +438,7 @@ func TestDeposit_IdempotencyKey_ReturnsCached(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	// First deposit
 	tx1, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", &idempotencyKey)
@@ -471,7 +478,7 @@ func TestDeposit_ProviderDeclined(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
 
@@ -503,7 +510,7 @@ func TestDeposit_ProviderError(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
 	if err != apperrors.ErrProviderError {
@@ -530,7 +537,7 @@ func TestDeposit_WalletNotFound(t *testing.T) {
 
 	userSvc.activeUsers[userID] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Deposit(context.Background(), userID, 10000, "tok_test", nil)
 	if err != apperrors.ErrNotFound {
@@ -556,7 +563,7 @@ func TestPurchase_Success(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	tx, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != nil {
@@ -602,7 +609,7 @@ func TestPurchase_InsufficientFunds(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrInsufficientFunds {
@@ -623,7 +630,7 @@ func TestPurchase_InactiveUser(t *testing.T) {
 
 	userSvc.activeUsers[userID] = false // Inactive user
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrUserNotActive {
@@ -648,7 +655,7 @@ func TestPurchase_OfferingNotFound(t *testing.T) {
 	walletSvc.balances[userID] = 10000
 	// Note: NOT setting offeringSvc.available[offeringID] - offering doesn't exist
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -673,7 +680,7 @@ func TestPurchase_OfferingNotAvailable(t *testing.T) {
 	walletSvc.balances[userID] = 10000
 	offeringSvc.available[offeringID] = false // Offering exists but not available
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -701,7 +708,7 @@ func TestPurchase_AlreadyOwned(t *testing.T) {
 	// User already has access
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrAlreadyOwned {
@@ -728,7 +735,7 @@ func TestPurchase_IdempotencyKey_ReturnsCached(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	// First purchase
 	tx1, err := uc.Purchase(context.Background(), userID, offeringID, &idempotencyKey)
@@ -771,7 +778,7 @@ func TestPurchase_GrantAccessRaceCondition(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	// First purchase succeeds
 	_, err := uc.Purchase(context.Background(), userID, offeringID, nil)
@@ -818,7 +825,7 @@ func TestRefund_Success(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	refundTx, err := uc.Refund(context.Background(), userID, offeringID, nil)
 	if err != nil {
@@ -875,20 +882,17 @@ func TestRefund_CreditFailed(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	refundTx, err := uc.Refund(context.Background(), userID, offeringID, nil)
 
-	if err != apperrors.ErrWalletCreditFailed {
-		t.Errorf("expected ErrWalletCreditFailed, got: %v", err)
+	// With atomic transactions, credit failure causes rollback - no transaction returned
+	if err == nil {
+		t.Error("expected error on credit failure")
 	}
 
-	if refundTx == nil {
-		t.Fatal("expected transaction to be returned on credit failure")
-	}
-
-	if refundTx.Status != domain.TxCreditFailed {
-		t.Errorf("expected status credit_failed, got %s", refundTx.Status)
+	if refundTx != nil {
+		t.Errorf("expected nil transaction on failure (atomic rollback), got: %+v", refundTx)
 	}
 }
 
@@ -921,27 +925,22 @@ func TestRefund_RevokeFailed(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	refundTx, err := uc.Refund(context.Background(), userID, offeringID, nil)
 
-	if err != apperrors.ErrRevokeFailed {
-		t.Errorf("expected ErrRevokeFailed, got: %v", err)
+	// With atomic transactions, revoke failure causes rollback - no transaction returned
+	if err == nil {
+		t.Error("expected error on revoke failure")
 	}
 
-	if refundTx == nil {
-		t.Fatal("expected transaction to be returned on revoke failure")
+	if refundTx != nil {
+		t.Errorf("expected nil transaction on failure (atomic rollback), got: %+v", refundTx)
 	}
 
-	if refundTx.Status != domain.TxRevokeFailed {
-		t.Errorf("expected status revoke_failed, got %s", refundTx.Status)
-	}
-
-	// Wallet should still be credited (refund money given)
-	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
-	if balance != 5000 {
-		t.Errorf("expected wallet balance 5000 (refund credited), got %d", balance)
-	}
+	// Note: In a real database transaction, the wallet credit would be rolled back.
+	// The mock TransactionRunner can't simulate true rollback of in-memory changes,
+	// so we don't check balance here. Integration tests should verify this behavior.
 }
 
 func TestRefund_NoActiveEntitlement(t *testing.T) {
@@ -961,7 +960,7 @@ func TestRefund_NoActiveEntitlement(t *testing.T) {
 	walletSvc.balances[userID] = 0
 	// Note: NOT setting entitleSvc.access - user doesn't own this offering
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Refund(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -991,7 +990,7 @@ func TestRefund_OriginalTxNotFound(t *testing.T) {
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 	// Note: NOT adding txRepo.transactions[purchaseTxID]
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	_, err := uc.Refund(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -1029,7 +1028,7 @@ func TestRefund_IdempotencyKey_ReturnsCached(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := usecases.NewPaymentUseCases(txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
+	uc := usecases.NewPaymentUseCases(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, provider)
 
 	// First refund
 	tx1, err := uc.Refund(context.Background(), userID, offeringID, &idempotencyKey)

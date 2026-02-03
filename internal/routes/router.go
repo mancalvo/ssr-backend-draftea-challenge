@@ -14,8 +14,11 @@ import (
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 )
 
-func NewRouter(db database.Executor) http.Handler {
+func NewRouter(db *database.DB) http.Handler {
 	mux := http.NewServeMux()
+
+	// Initialize transaction runner for use cases
+	txRunner := database.NewTransactionRunner(db)
 
 	// Initialize repositories
 	userRepo := usersInfra.NewPostgresUserRepository(db)
@@ -33,8 +36,9 @@ func NewRouter(db database.Executor) http.Handler {
 	// Initialize payment provider (mock)
 	paymentProvider := paymentsInfra.NewMockPaymentProvider()
 
-	// Initialize use cases 
+	// Initialize use cases
 	paymentUC := usecases.NewPaymentUseCases(
+		txRunner,
 		txRepo,
 		walletSvc,
 		userSvc,

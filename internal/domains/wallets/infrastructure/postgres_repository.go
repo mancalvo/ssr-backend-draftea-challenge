@@ -18,6 +18,11 @@ func NewPostgresWalletRepository(db database.Executor) *PostgresWalletRepository
 	return &PostgresWalletRepository{db: db}
 }
 
+// getExecutor returns the transaction from context if present, otherwise the default db
+func (r *PostgresWalletRepository) getExecutor(ctx context.Context) database.Executor {
+	return database.ExecutorFromContext(ctx, r.db)
+}
+
 func (r *PostgresWalletRepository) GetByUserID(ctx context.Context, userID string) (*domain.Wallet, error) {
 	query := `
 		SELECT id, user_id, balance_cents, updated_at
@@ -26,7 +31,7 @@ func (r *PostgresWalletRepository) GetByUserID(ctx context.Context, userID strin
 	`
 
 	var wallet domain.Wallet
-	err := r.db.QueryRowContext(ctx, query, userID).Scan(
+	err := r.getExecutor(ctx).QueryRowContext(ctx, query, userID).Scan(
 		&wallet.ID,
 		&wallet.UserID,
 		&wallet.Balance,
@@ -51,7 +56,7 @@ func (r *PostgresWalletRepository) Credit(ctx context.Context, walletID string, 
 		WHERE id = $3
 	`
 
-	result, err := r.db.ExecContext(ctx, query, amount, time.Now(), walletID)
+	result, err := r.getExecutor(ctx).ExecContext(ctx, query, amount, time.Now(), walletID)
 	if err != nil {
 		return err
 	}
@@ -76,7 +81,8 @@ func (r *PostgresWalletRepository) Debit(ctx context.Context, walletID string, a
 		WHERE id = $3 AND balance_cents >= $1
 	`
 
-	result, err := r.db.ExecContext(ctx, query, amount, time.Now(), walletID)
+	exec := r.getExecutor(ctx)
+	result, err := exec.ExecContext(ctx, query, amount, time.Now(), walletID)
 	if err != nil {
 		return err
 	}
@@ -89,7 +95,7 @@ func (r *PostgresWalletRepository) Debit(ctx context.Context, walletID string, a
 		// Could be: wallet not found OR insufficient funds
 		var balance int64
 		checkQuery := `SELECT balance_cents FROM wallets WHERE id = $1`
-		err := r.db.QueryRowContext(ctx, checkQuery, walletID).Scan(&balance)
+		err := exec.QueryRowContext(ctx, checkQuery, walletID).Scan(&balance)
 		if err == sql.ErrNoRows {
 			return apperrors.ErrNotFound
 		}
@@ -108,7 +114,7 @@ func (r *PostgresWalletRepository) Create(ctx context.Context, wallet *domain.Wa
 		VALUES ($1, $2, $3, $4)
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		wallet.ID,
 		wallet.UserID,
 		wallet.Balance,
@@ -117,3 +123,4 @@ func (r *PostgresWalletRepository) Create(ctx context.Context, wallet *domain.Wa
 
 	return err
 }
+
