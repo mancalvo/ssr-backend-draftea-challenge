@@ -6,7 +6,6 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
-	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/shared/uow"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/logger"
 )
 
@@ -112,8 +111,7 @@ type TransactionRunner struct {
 	db *DB
 }
 
-// Compile-time check that TransactionRunner implements uow.TransactionRunner
-var _ uow.TransactionRunner = (*TransactionRunner)(nil)
+
 
 // NewTransactionRunner creates a new TransactionRunner
 func NewTransactionRunner(db *DB) *TransactionRunner {

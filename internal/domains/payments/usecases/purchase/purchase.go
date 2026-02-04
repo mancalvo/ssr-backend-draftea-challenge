@@ -6,10 +6,14 @@ import (
 	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
-	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/shared/uow"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 	"github.com/rs/xid"
 )
+
+// TransactionRunner executes operations within a database transaction.
+type TransactionRunner interface {
+	RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+}
 
 // UseCase defines the interface for purchase operations.
 type UseCase interface {
@@ -18,7 +22,7 @@ type UseCase interface {
 
 // PaymentPurchaseUseCase orchestrates purchase processing.
 type PaymentPurchaseUseCase struct {
-	txRunner    uow.TransactionRunner
+	txRunner    TransactionRunner
 	txRepo      domain.TransactionRepository
 	walletSvc   domain.WalletService
 	userSvc     domain.UserService
@@ -28,7 +32,7 @@ type PaymentPurchaseUseCase struct {
 
 // New creates a new PaymentPurchaseUseCase with the required dependencies.
 func New(
-	txRunner uow.TransactionRunner,
+	txRunner TransactionRunner,
 	txRepo domain.TransactionRepository,
 	walletSvc domain.WalletService,
 	userSvc domain.UserService,
