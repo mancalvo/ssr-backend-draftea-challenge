@@ -3,11 +3,11 @@ package refund
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
-	"github.com/rs/xid"
+	idgen "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/idgen"
+	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
 
 // TransactionRunner executes operations within a database transaction.
@@ -26,6 +26,8 @@ type PaymentRefundUseCase struct {
 	txRepo     domain.TransactionRepository
 	walletSvc  domain.WalletService
 	entitleSvc domain.EntitlementService
+	idGen      idgen.Generator
+	timeProv   timeprovider.Provider
 }
 
 // New creates a new PaymentRefundUseCase with the required dependencies.
@@ -34,12 +36,16 @@ func New(
 	txRepo domain.TransactionRepository,
 	walletSvc domain.WalletService,
 	entitleSvc domain.EntitlementService,
+	idGen idgen.Generator,
+	timeProv timeprovider.Provider,
 ) *PaymentRefundUseCase {
 	return &PaymentRefundUseCase{
 		txRunner:   txRunner,
 		txRepo:     txRepo,
 		walletSvc:  walletSvc,
 		entitleSvc: entitleSvc,
+		idGen:      idGen,
+		timeProv:   timeProv,
 	}
 }
 
@@ -112,7 +118,7 @@ func (uc *PaymentRefundUseCase) getOriginalTransaction(ctx context.Context, user
 // prepareRefundTransaction creates a new refund transaction entity.
 func (uc *PaymentRefundUseCase) prepareRefundTransaction(userID, walletID, offeringID string, amount int64, idempotencyKey *string) *domain.Transaction {
 	return &domain.Transaction{
-		ID:             xid.New().String(),
+		ID:             uc.idGen.Generate(),
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxRefund,
@@ -120,7 +126,7 @@ func (uc *PaymentRefundUseCase) prepareRefundTransaction(userID, walletID, offer
 		Status:         domain.TxCompleted, // Will be committed as completed if transaction succeeds
 		OfferingID:     &offeringID,
 		IdempotencyKey: idempotencyKey,
-		CreatedAt:      time.Now(),
+		CreatedAt:      uc.timeProv.Now(),
 	}
 }
 

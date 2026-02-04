@@ -5,11 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
-	"github.com/rs/xid"
+	idgen "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/idgen"
+	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
 
 // UseCase defines the interface for deposit operations.
@@ -23,6 +23,8 @@ type PaymentDepositUseCase struct {
 	walletSvc domain.WalletService
 	userSvc   domain.UserService
 	provider  domain.PaymentProvider
+	idGen     idgen.Generator
+	timeProv  timeprovider.Provider
 }
 
 // New creates a new PaymentDepositUseCase with the required dependencies.
@@ -31,12 +33,16 @@ func New(
 	walletSvc domain.WalletService,
 	userSvc domain.UserService,
 	provider domain.PaymentProvider,
+	idGen idgen.Generator,
+	timeProv timeprovider.Provider,
 ) *PaymentDepositUseCase {
 	return &PaymentDepositUseCase{
 		txRepo:    txRepo,
 		walletSvc: walletSvc,
 		userSvc:   userSvc,
 		provider:  provider,
+		idGen:     idGen,
+		timeProv:  timeProv,
 	}
 }
 
@@ -138,14 +144,14 @@ func (uc *PaymentDepositUseCase) verifyUserActive(ctx context.Context, userID st
 // createPendingTransaction creates a new pending transaction entity.
 func (uc *PaymentDepositUseCase) createPendingTransaction(userID, walletID string, amount int64, idempotencyKey *string) *domain.Transaction {
 	return &domain.Transaction{
-		ID:             xid.New().String(),
+		ID:             uc.idGen.Generate(),
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxDeposit,
 		Amount:         amount,
 		Status:         domain.TxPending,
 		IdempotencyKey: idempotencyKey,
-		CreatedAt:      time.Now(),
+		CreatedAt:      uc.timeProv.Now(),
 	}
 }
 

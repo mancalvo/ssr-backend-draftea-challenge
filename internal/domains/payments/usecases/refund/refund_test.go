@@ -14,6 +14,18 @@ import (
 
 // Mocks
 
+type mockIDGenerator struct{}
+
+func (g *mockIDGenerator) Generate() string {
+	return xid.New().String()
+}
+
+type mockTimeProvider struct{}
+
+func (p *mockTimeProvider) Now() time.Time {
+	return time.Now()
+}
+
 type mockTransactionRunner struct{}
 
 func (m *mockTransactionRunner) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
@@ -223,7 +235,7 @@ func TestRefund_Success(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc)
+	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	refundTx, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != nil {
@@ -276,7 +288,7 @@ func TestRefund_CreditFailed(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc)
+	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	refundTx, err := uc.Execute(context.Background(), userID, offeringID, nil)
 
@@ -315,7 +327,7 @@ func TestRefund_RevokeFailed(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc)
+	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	refundTx, err := uc.Execute(context.Background(), userID, offeringID, nil)
 
@@ -342,7 +354,7 @@ func TestRefund_NoActiveEntitlement(t *testing.T) {
 	walletSvc.balances[userID] = 0
 	// Note: NOT setting entitleSvc.access - user doesn't own this offering
 
-	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc)
+	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -368,7 +380,7 @@ func TestRefund_OriginalTxNotFound(t *testing.T) {
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 	// Note: NOT adding txRepo.transactions[purchaseTxID]
 
-	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc)
+	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -402,7 +414,7 @@ func TestRefund_IdempotencyKey_ReturnsCached(t *testing.T) {
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 	entitleSvc.txIDs[entitleSvc.key(userID, offeringID)] = purchaseTxID
 
-	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc)
+	uc := refund.New(&mockTransactionRunner{}, txRepo, walletSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	// First refund
 	tx1, err := uc.Execute(context.Background(), userID, offeringID, &idempotencyKey)

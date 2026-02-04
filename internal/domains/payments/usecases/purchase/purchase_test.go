@@ -15,6 +15,18 @@ import (
 
 type mockTransactionRunner struct{}
 
+type mockIDGenerator struct{}
+
+func (g *mockIDGenerator) Generate() string {
+	return xid.New().String()
+}
+
+type mockTimeProvider struct{}
+
+func (p *mockTimeProvider) Now() time.Time {
+	return time.Now()
+}
+
 func (m *mockTransactionRunner) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
 	return fn(ctx)
 }
@@ -205,7 +217,7 @@ func TestPurchase_Success(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	tx, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != nil {
@@ -250,7 +262,7 @@ func TestPurchase_InsufficientFunds(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrInsufficientFunds {
@@ -270,7 +282,7 @@ func TestPurchase_InactiveUser(t *testing.T) {
 
 	userSvc.activeUsers[userID] = false // Inactive user
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrUserNotActive {
@@ -294,7 +306,7 @@ func TestPurchase_OfferingNotFound(t *testing.T) {
 	walletSvc.balances[userID] = 10000
 	// Note: NOT setting offeringSvc.available[offeringID] - offering doesn't exist
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -318,7 +330,7 @@ func TestPurchase_OfferingNotAvailable(t *testing.T) {
 	walletSvc.balances[userID] = 10000
 	offeringSvc.available[offeringID] = false // Offering exists but not available
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrNotFound {
@@ -345,7 +357,7 @@ func TestPurchase_AlreadyOwned(t *testing.T) {
 	// User already has access
 	entitleSvc.access[entitleSvc.key(userID, offeringID)] = true
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)
 	if err != apperrors.ErrAlreadyOwned {
@@ -371,7 +383,7 @@ func TestPurchase_IdempotencyKey_ReturnsCached(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	// First purchase
 	tx1, err := uc.Execute(context.Background(), userID, offeringID, &idempotencyKey)
@@ -413,7 +425,7 @@ func TestPurchase_GrantAccessRaceCondition(t *testing.T) {
 	offeringSvc.prices[offeringID] = 5000
 	offeringSvc.available[offeringID] = true
 
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
+	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
 
 	// First purchase succeeds
 	_, err := uc.Execute(context.Background(), userID, offeringID, nil)

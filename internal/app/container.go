@@ -14,6 +14,8 @@ import (
 	walletsSvc "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/wallets/services"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http/handlers"
+	idgen "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/idgen"
+	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
 
 type Container struct {
@@ -42,10 +44,14 @@ func NewContainer(db *database.DB) *Container {
 	// Initialize payment provider (mock)
 	paymentProvider := paymentsInfra.NewMockPaymentProvider()
 
+	// Initialize providers
+	idGen := &idgen.XIDGenerator{}
+	timeProv := &timeprovider.SystemProvider{}
+
 	// Initialize use cases
-	depositUC := deposit.New(txRepo, walletSvc, userSvc, paymentProvider)
-	purchaseUC := purchase.New(txRunner, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc)
-	refundUC := refund.New(txRunner, txRepo, walletSvc, entitleSvc)
+	depositUC := deposit.New(txRepo, walletSvc, userSvc, paymentProvider, idGen, timeProv)
+	purchaseUC := purchase.New(txRunner, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, idGen, timeProv)
+	refundUC := refund.New(txRunner, txRepo, walletSvc, entitleSvc, idGen, timeProv)
 	historyUC := history.New(txRepo, userSvc)
 
 	// Initialize handlers

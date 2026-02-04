@@ -3,11 +3,11 @@ package purchase
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
-	"github.com/rs/xid"
+	idgen "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/idgen"
+	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
 
 // TransactionRunner executes operations within a database transaction.
@@ -28,6 +28,8 @@ type PaymentPurchaseUseCase struct {
 	userSvc     domain.UserService
 	offeringSvc domain.OfferingService
 	entitleSvc  domain.EntitlementService
+	idGen       idgen.Generator
+	timeProv    timeprovider.Provider
 }
 
 // New creates a new PaymentPurchaseUseCase with the required dependencies.
@@ -38,6 +40,8 @@ func New(
 	userSvc domain.UserService,
 	offeringSvc domain.OfferingService,
 	entitleSvc domain.EntitlementService,
+	idGen idgen.Generator,
+	timeProv timeprovider.Provider,
 ) *PaymentPurchaseUseCase {
 	return &PaymentPurchaseUseCase{
 		txRunner:    txRunner,
@@ -46,6 +50,8 @@ func New(
 		userSvc:     userSvc,
 		offeringSvc: offeringSvc,
 		entitleSvc:  entitleSvc,
+		idGen:       idGen,
+		timeProv:    timeProv,
 	}
 }
 
@@ -157,7 +163,7 @@ func (uc *PaymentPurchaseUseCase) getOfferingPrice(ctx context.Context, offering
 // prepareTransaction creates a new transaction entity for the purchase.
 func (uc *PaymentPurchaseUseCase) prepareTransaction(userID, walletID, offeringID string, price int64, idempotencyKey *string) *domain.Transaction {
 	return &domain.Transaction{
-		ID:             xid.New().String(),
+		ID:             uc.idGen.Generate(),
 		UserID:         userID,
 		WalletID:       walletID,
 		Type:           domain.TxPurchase,
@@ -165,7 +171,7 @@ func (uc *PaymentPurchaseUseCase) prepareTransaction(userID, walletID, offeringI
 		Status:         domain.TxCompleted,
 		OfferingID:     &offeringID,
 		IdempotencyKey: idempotencyKey,
-		CreatedAt:      time.Now(),
+		CreatedAt:      uc.timeProv.Now(),
 	}
 }
 

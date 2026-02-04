@@ -14,6 +14,18 @@ import (
 
 // Mocks
 
+type mockIDGenerator struct{}
+
+func (g *mockIDGenerator) Generate() string {
+	return xid.New().String()
+}
+
+type mockTimeProvider struct{}
+
+func (p *mockTimeProvider) Now() time.Time {
+	return time.Now()
+}
+
 type mockTransactionRepo struct {
 	transactions map[string]*domain.Transaction
 }
@@ -166,7 +178,7 @@ func TestDeposit_Success(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	tx, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
 	if err != nil {
@@ -197,7 +209,7 @@ func TestDeposit_InactiveUser(t *testing.T) {
 	userID := xid.New().String()
 	userSvc.activeUsers[userID] = false
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
 	if err != apperrors.ErrUserNotActive {
@@ -218,7 +230,7 @@ func TestDeposit_WalletCreditFailed(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	tx, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
 
@@ -244,7 +256,7 @@ func TestDeposit_InvalidAmount(t *testing.T) {
 	userID := xid.New().String()
 	userSvc.activeUsers[userID] = true
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	// Test zero amount
 	_, err := uc.Execute(context.Background(), userID, 0, "tok_test", nil)
@@ -273,7 +285,7 @@ func TestDeposit_IdempotencyKey_ReturnsCached(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	// First deposit
 	tx1, err := uc.Execute(context.Background(), userID, 10000, "tok_test", &idempotencyKey)
@@ -311,7 +323,7 @@ func TestDeposit_ProviderDeclined(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
 
@@ -341,7 +353,7 @@ func TestDeposit_ProviderError(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 0
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
 	if err != apperrors.ErrProviderError {
@@ -366,7 +378,7 @@ func TestDeposit_WalletNotFound(t *testing.T) {
 	userSvc.activeUsers[userID] = true
 	// Don't set walletID - simulates wallet not found
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	_, err := uc.Execute(context.Background(), userID, 10000, "tok_test", nil)
 	if !errors.Is(err, apperrors.ErrNotFound) {
@@ -466,7 +478,7 @@ func TestDeposit_RaceCondition_IdempotencyKey(t *testing.T) {
 	walletSvc.walletIDs[userID] = walletID
 	walletSvc.balances[userID] = 50000 // Already has balance from the existing deposit
 
-	uc := deposit.New(txRepo, walletSvc, userSvc, provider)
+	uc := deposit.New(txRepo, walletSvc, userSvc, provider, &mockIDGenerator{}, &mockTimeProvider{})
 
 	// Execute - should handle the race condition gracefully
 	tx, err := uc.Execute(context.Background(), userID, 10000, "tok_test", &idempotencyKey)
