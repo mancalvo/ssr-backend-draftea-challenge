@@ -10,7 +10,8 @@ import (
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/app"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
-	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
+	dbseeds "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database/seeds"
 	infrahttp "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/logger"
 )
@@ -20,12 +21,24 @@ func main() {
 	cfg := config.Load()
 
 	// Initialize database connection
-	db, err := database.NewPostgresConnection(cfg.Database)
+	db, err := dbseeds.NewPostgresConnection(cfg.Database)
 	if err != nil {
 		logger.Error("failed to connect to database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// Run migrations
+	if err := dbseeds.MigrateUp(cfg.Database); err != nil {
+		logger.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+
+	// Run seeds if in development environment
+	if err := seeds.Run(context.Background(), db.DB, cfg); err != nil {
+		logger.Error("failed to run seeds", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize dependencies
 	container := app.NewContainer(db)
@@ -73,4 +86,3 @@ func main() {
 
 	logger.Info("server exited gracefully")
 }
-

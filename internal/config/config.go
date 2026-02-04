@@ -6,6 +6,7 @@ import (
 )
 
 type Config struct {
+	Env      string
 	Server   ServerConfig
 	Database DatabaseConfig
 }
@@ -25,6 +26,7 @@ type DatabaseConfig struct {
 
 func Load() *Config {
 	return &Config{
+		Env: getEnv("APP_ENV", "development"),
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
 		},
