@@ -9,6 +9,7 @@ import (
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/purchase"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/usecases/refund"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/httputil"
 	"github.com/rs/xid"
 )
 
@@ -44,23 +45,23 @@ type DepositRequest struct {
 // Deposit handles POST /payments/deposit
 func (h *PaymentHandlers) Deposit(w http.ResponseWriter, r *http.Request) {
 	var req DepositRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		JSONError(w, err)
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.JSONError(w, err)
 		return
 	}
 
 	if _, err := xid.FromString(req.UserID); err != nil {
-		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	if req.Amount <= 0 {
-		JSONErrorWithCode(w, "amount must be positive", "INVALID_AMOUNT", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "amount must be positive", "INVALID_AMOUNT", http.StatusBadRequest)
 		return
 	}
 
 	if req.CardToken == "" {
-		JSONErrorWithCode(w, "card_token is required", "MISSING_CARD_TOKEN", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "card_token is required", "MISSING_CARD_TOKEN", http.StatusBadRequest)
 		return
 	}
 
@@ -69,7 +70,7 @@ func (h *PaymentHandlers) Deposit(w http.ResponseWriter, r *http.Request) {
 		// Special case: wallet credit failed but payment was received
 		// Return 202 with transaction data so user knows payment went through
 		if errors.Is(err, apperrors.ErrWalletCreditFailed) && tx != nil {
-			JSON(w, http.StatusAccepted, map[string]interface{}{
+			httputil.JSON(w, http.StatusAccepted, map[string]interface{}{
 				"transaction_id":  tx.ID,
 				"type":            tx.Type,
 				"amount":          tx.Amount,
@@ -81,11 +82,11 @@ func (h *PaymentHandlers) Deposit(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 
-	JSON(w, http.StatusCreated, map[string]interface{}{
+	httputil.JSON(w, http.StatusCreated, map[string]interface{}{
 		"transaction_id":  tx.ID,
 		"type":            tx.Type,
 		"amount":          tx.Amount,
@@ -105,28 +106,28 @@ type PurchaseRequest struct {
 // Purchase handles POST /payments/purchase
 func (h *PaymentHandlers) Purchase(w http.ResponseWriter, r *http.Request) {
 	var req PurchaseRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		JSONError(w, err)
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.JSONError(w, err)
 		return
 	}
 
 	if _, err := xid.FromString(req.UserID); err != nil {
-		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	if _, err := xid.FromString(req.OfferingID); err != nil {
-		JSONErrorWithCode(w, "invalid offering_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid offering_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	tx, err := h.purchaseUC.Execute(r.Context(), req.UserID, req.OfferingID, req.IdempotencyKey)
 	if err != nil {
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 
-	JSON(w, http.StatusCreated, map[string]interface{}{
+	httputil.JSON(w, http.StatusCreated, map[string]interface{}{
 		"transaction_id":  tx.ID,
 		"type":            tx.Type,
 		"amount":          tx.Amount,
@@ -147,18 +148,18 @@ type RefundRequest struct {
 // Refund handles POST /payments/refund
 func (h *PaymentHandlers) Refund(w http.ResponseWriter, r *http.Request) {
 	var req RefundRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		JSONErrorWithCode(w, "invalid request body", "PARSE_ERROR", http.StatusBadRequest)
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.JSONErrorWithCode(w, "invalid request body", "PARSE_ERROR", http.StatusBadRequest)
 		return
 	}
 
 	if _, err := xid.FromString(req.UserID); err != nil {
-		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	if _, err := xid.FromString(req.OfferingID); err != nil {
-		JSONErrorWithCode(w, "invalid offering_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid offering_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
@@ -166,7 +167,7 @@ func (h *PaymentHandlers) Refund(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Handle partial success cases (202)
 		if (errors.Is(err, apperrors.ErrWalletCreditFailed) || errors.Is(err, apperrors.ErrRevokeFailed)) && refundTx != nil {
-			JSON(w, http.StatusAccepted, map[string]interface{}{
+			httputil.JSON(w, http.StatusAccepted, map[string]interface{}{
 				"transaction_id":  refundTx.ID,
 				"type":            refundTx.Type,
 				"amount":          refundTx.Amount,
@@ -178,11 +179,11 @@ func (h *PaymentHandlers) Refund(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 
-	JSON(w, http.StatusCreated, map[string]interface{}{
+	httputil.JSON(w, http.StatusCreated, map[string]interface{}{
 		"transaction_id":  refundTx.ID,
 		"type":            refundTx.Type,
 		"amount":          refundTx.Amount,
@@ -197,7 +198,7 @@ func (h *PaymentHandlers) Refund(w http.ResponseWriter, r *http.Request) {
 func (h *PaymentHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.PathValue("user_id")
 	if _, err := xid.FromString(userIDStr); err != nil {
-		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
@@ -206,10 +207,10 @@ func (h *PaymentHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 	paginated, err := h.historyUC.Execute(r.Context(), userIDStr, page, pageSize)
 	if err != nil {
 		if err == apperrors.ErrNotFound {
-			JSONErrorWithCode(w, "user not found", "USER_NOT_FOUND", http.StatusNotFound)
+			httputil.JSONErrorWithCode(w, "user not found", "USER_NOT_FOUND", http.StatusNotFound)
 			return
 		}
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 
@@ -226,7 +227,7 @@ func (h *PaymentHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	JSON(w, http.StatusOK, map[string]interface{}{
+	httputil.JSON(w, http.StatusOK, map[string]interface{}{
 		"transactions": txList,
 		"pagination": map[string]interface{}{
 			"page":        paginated.Page,

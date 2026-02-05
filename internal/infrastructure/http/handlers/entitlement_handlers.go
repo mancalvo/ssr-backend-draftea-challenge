@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	offeringsDomain "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/domain"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/httputil"
 	"github.com/rs/xid"
 )
 
@@ -26,13 +27,13 @@ func NewEntitlementHandlers(
 func (h *EntitlementHandlers) GetUserEntitlements(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.PathValue("user_id")
 	if _, err := xid.FromString(userIDStr); err != nil {
-		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	entitlements, err := h.entitlementRepo.GetByUserID(r.Context(), userIDStr)
 	if err != nil {
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 
@@ -60,7 +61,7 @@ func (h *EntitlementHandlers) GetUserEntitlements(w http.ResponseWriter, r *http
 		result = append(result, entData)
 	}
 
-	JSON(w, http.StatusOK, map[string]interface{}{
+	httputil.JSON(w, http.StatusOK, map[string]interface{}{
 		"user_id":      userIDStr,
 		"entitlements": result,
 		"count":        len(result),

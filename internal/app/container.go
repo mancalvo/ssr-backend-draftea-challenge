@@ -1,6 +1,11 @@
 package app
 
 import (
+	"net/http"
+
+	idempotencyInfra "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/idempotency/infrastructure"
+	idempotencyMw "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/idempotency/middleware"
+	idempotencySvc "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/idempotency/services"
 	offeringsInfra "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/infrastructure"
 	offeringsSvc "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/offerings/services"
 	paymentsInfra "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/infrastructure"
@@ -22,6 +27,8 @@ type Container struct {
 	WalletHandlers      *handlers.WalletHandlers
 	PaymentHandlers     *handlers.PaymentHandlers
 	EntitlementHandlers *handlers.EntitlementHandlers
+	IdempotencyMw       func(http.Handler) http.Handler
+	IdempotencySvc      idempotencySvc.Service
 }
 
 func NewContainer(db *database.DB) *Container {
@@ -59,9 +66,16 @@ func NewContainer(db *database.DB) *Container {
 	paymentHandlers := handlers.NewPaymentHandlers(depositUC, purchaseUC, refundUC, historyUC)
 	entitlementHandlers := handlers.NewEntitlementHandlers(entitlementRepo, offeringRepo)
 
+	// Initialize idempotency domain
+	idempotencyRepo := idempotencyInfra.NewPostgresRepository(db)
+	idempotencyService := idempotencySvc.New(idempotencyRepo, timeProv)
+	idempotencyMiddleware := idempotencyMw.New(idempotencyService)
+
 	return &Container{
 		WalletHandlers:      walletHandlers,
 		PaymentHandlers:     paymentHandlers,
 		EntitlementHandlers: entitlementHandlers,
+		IdempotencyMw:       idempotencyMiddleware,
+		IdempotencySvc:      idempotencyService,
 	}
 }

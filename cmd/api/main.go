@@ -10,6 +10,7 @@ import (
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/app"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
+	idempotencySvc "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/idempotency/services"
 	dbseeds "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/database/seeds"
 	infrahttp "github.com/mancalvo/ssr-backend-draftea-challenge/internal/infrastructure/http"
@@ -43,12 +44,20 @@ func main() {
 	// Initialize dependencies
 	container := app.NewContainer(db)
 
+	// Create context for background workers (cancelled on shutdown)
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	defer cancelWorkers()
+
+	// Start idempotency cleanup worker
+	idempotencySvc.StartCleanupWorker(workerCtx, container.IdempotencySvc, idempotencySvc.CleanupWorkerConfig{})
+
 	// Build router with dependencies
-	router := infrahttp.NewRouter(
-		container.WalletHandlers,
-		container.PaymentHandlers,
-		container.EntitlementHandlers,
-	)
+	router := infrahttp.NewRouter(infrahttp.RouterConfig{
+		WalletHandlers:      container.WalletHandlers,
+		PaymentHandlers:     container.PaymentHandlers,
+		EntitlementHandlers: container.EntitlementHandlers,
+		IdempotencyMw:       container.IdempotencyMw,
+	})
 
 	// Apply global middleware
 	handler := infrahttp.Chain(
@@ -75,6 +84,9 @@ func main() {
 	<-quit
 
 	logger.Info("shutting down server...")
+
+	// Cancel background workers
+	cancelWorkers()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

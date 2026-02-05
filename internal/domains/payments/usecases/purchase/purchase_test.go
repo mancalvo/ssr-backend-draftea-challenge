@@ -365,48 +365,8 @@ func TestPurchase_AlreadyOwned(t *testing.T) {
 	}
 }
 
-func TestPurchase_IdempotencyKey_ReturnsCached(t *testing.T) {
-	txRepo := newMockTransactionRepo()
-	walletSvc := newMockWalletService()
-	userSvc := newMockUserService()
-	offeringSvc := newMockOfferingService()
-	entitleSvc := newMockEntitlementService()
-
-	userID := xid.New().String()
-	walletID := xid.New().String()
-	offeringID := xid.New().String()
-	idempotencyKey := "purchase-123"
-
-	userSvc.activeUsers[userID] = true
-	walletSvc.walletIDs[userID] = walletID
-	walletSvc.balances[userID] = 10000
-	offeringSvc.prices[offeringID] = 5000
-	offeringSvc.available[offeringID] = true
-
-	uc := purchase.New(&mockTransactionRunner{}, txRepo, walletSvc, userSvc, offeringSvc, entitleSvc, &mockIDGenerator{}, &mockTimeProvider{})
-
-	// First purchase
-	tx1, err := uc.Execute(context.Background(), userID, offeringID, &idempotencyKey)
-	if err != nil {
-		t.Fatalf("expected no error on first purchase, got: %v", err)
-	}
-
-	// Second purchase with same idempotency key should return cached result
-	tx2, err := uc.Execute(context.Background(), userID, offeringID, &idempotencyKey)
-	if err != nil {
-		t.Fatalf("expected no error on idempotent purchase, got: %v", err)
-	}
-
-	if tx1.ID != tx2.ID {
-		t.Errorf("expected same transaction ID for idempotent request, got %v and %v", tx1.ID, tx2.ID)
-	}
-
-	// Wallet should only be debited once
-	balance, _, _ := walletSvc.GetBalance(context.Background(), userID)
-	if balance != 5000 {
-		t.Errorf("expected wallet balance 5000 (single debit), got %d", balance)
-	}
-}
+// Note: Idempotency is now handled by HTTP middleware, not at the use case level.
+// See internal/domains/idempotency/middleware for idempotency tests.
 
 func TestPurchase_GrantAccessRaceCondition(t *testing.T) {
 	txRepo := newMockTransactionRepo()

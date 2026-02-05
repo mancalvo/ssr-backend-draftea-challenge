@@ -7,6 +7,7 @@ import (
 	usersDomain "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/users/domain"
 	walletsDomain "github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/wallets/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/httputil"
 	"github.com/rs/xid"
 )
 
@@ -26,28 +27,28 @@ func NewWalletHandlers(walletRepo walletsDomain.WalletRepository, userRepo users
 func (h *WalletHandlers) GetBalance(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.PathValue("user_id")
 	if _, err := xid.FromString(userIDStr); err != nil {
-		JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
+		httputil.JSONErrorWithCode(w, "invalid user_id", "INVALID_ID", http.StatusBadRequest)
 		return
 	}
 
 	// Validate user exists and is active
 	user, err := h.userRepo.GetByID(r.Context(), userIDStr)
 	if err != nil {
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 	if !user.IsActive {
-		JSONError(w, apperrors.ErrUserNotActive)
+		httputil.JSONError(w, apperrors.ErrUserNotActive)
 		return
 	}
 
 	wallet, err := h.walletRepo.GetByUserID(r.Context(), userIDStr)
 	if err != nil {
-		JSONError(w, err)
+		httputil.JSONError(w, err)
 		return
 	}
 
-	JSON(w, http.StatusOK, map[string]interface{}{
+	httputil.JSON(w, http.StatusOK, map[string]interface{}{
 		"user_id":      wallet.UserID,
 		"balance":      wallet.Balance,
 		"balance_mxn":  float64(wallet.Balance) / 100,

@@ -7,16 +7,18 @@ import (
 
 // Domain errors
 var (
-	ErrNotFound           = errors.New("resource not found")
-	ErrInsufficientFunds  = errors.New("insufficient funds")
-	ErrInvalidInput       = errors.New("invalid input")
-	ErrUserNotActive      = errors.New("user is not active")
-	ErrAlreadyExists      = errors.New("resource already exists")
-	ErrAlreadyOwned       = errors.New("offering already owned")
-	ErrPaymentFailed      = errors.New("payment processing failed")
-	ErrProviderError      = errors.New("external provider error")
-	ErrWalletCreditFailed = errors.New("payment received, balance update pending")
-	ErrRevokeFailed       = errors.New("refund credited, entitlement revoke pending")
+	ErrNotFound              = errors.New("resource not found")
+	ErrInsufficientFunds     = errors.New("insufficient funds")
+	ErrInvalidInput          = errors.New("invalid input")
+	ErrUserNotActive         = errors.New("user is not active")
+	ErrAlreadyExists         = errors.New("resource already exists")
+	ErrAlreadyOwned          = errors.New("offering already owned")
+	ErrPaymentFailed         = errors.New("payment processing failed")
+	ErrProviderError         = errors.New("external provider error")
+	ErrWalletCreditFailed    = errors.New("payment received, balance update pending")
+	ErrRevokeFailed          = errors.New("refund credited, entitlement revoke pending")
+	ErrIdempotencyKeyReused  = errors.New("idempotency key already used with different request")
+	ErrIdempotencyInProgress = errors.New("request with this idempotency key is already in progress")
 )
 
 // AppError wraps domain errors with HTTP status codes
@@ -82,6 +84,10 @@ func HTTPStatusCode(err error) int {
 		return http.StatusAccepted // 202 - Payment received, balance updating
 	case errors.Is(err, ErrRevokeFailed):
 		return http.StatusAccepted // 202 - Refund credited, revoke pending
+	case errors.Is(err, ErrIdempotencyKeyReused):
+		return http.StatusUnprocessableEntity // 422 - Key reused with different payload
+	case errors.Is(err, ErrIdempotencyInProgress):
+		return http.StatusConflict // 409 - Request already in progress
 	default:
 		return http.StatusInternalServerError
 	}

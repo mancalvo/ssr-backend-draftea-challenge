@@ -3,7 +3,6 @@ package deposit
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
@@ -49,12 +48,7 @@ func New(
 // Execute processes a card payment and credits the wallet.
 // Uses "Record First" pattern: creates PENDING transaction before calling provider.
 func (uc *PaymentDepositUseCase) Execute(ctx context.Context, userID string, amount int64, cardToken string, idempotencyKey *string) (*domain.Transaction, error) {
-	// Step 1: Check idempotency
-	if existing, err := uc.checkIdempotency(ctx, userID, idempotencyKey); err != nil || existing != nil {
-		return existing, err
-	}
-
-	// Step 2: Validate input
+	// Step 1: Validate input
 	if err := uc.validateInput(amount); err != nil {
 		return nil, err
 	}
@@ -73,7 +67,7 @@ func (uc *PaymentDepositUseCase) Execute(ctx context.Context, userID string, amo
 	// Step 5: Create pending transaction (Record First pattern)
 	tx := uc.createPendingTransaction(userID, walletID, amount, idempotencyKey)
 	if err := uc.txRepo.Create(ctx, tx); err != nil {
-		return uc.handleDuplicateCreation(ctx, userID, idempotencyKey, err)
+		return nil, err
 	}
 
 	// Step 6: Process payment
@@ -101,24 +95,6 @@ func (uc *PaymentDepositUseCase) Execute(ctx context.Context, userID string, amo
 
 	tx.Status = domain.TxCompleted
 	return tx, nil
-}
-
-// checkIdempotency checks for existing transaction with same idempotency key.
-func (uc *PaymentDepositUseCase) checkIdempotency(ctx context.Context, userID string, idempotencyKey *string) (*domain.Transaction, error) {
-	if idempotencyKey == nil || *idempotencyKey == "" {
-		return nil, nil
-	}
-
-	existing, err := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
-	if err == nil {
-		return existing, nil
-	}
-
-	if !errors.Is(err, apperrors.ErrNotFound) {
-		return nil, err
-	}
-
-	return nil, nil
 }
 
 // validateInput validates the deposit amount.
@@ -153,17 +129,6 @@ func (uc *PaymentDepositUseCase) createPendingTransaction(userID, walletID strin
 		IdempotencyKey: idempotencyKey,
 		CreatedAt:      uc.timeProv.Now(),
 	}
-}
-
-// handleDuplicateCreation handles the case where transaction creation fails due to duplicate key.
-func (uc *PaymentDepositUseCase) handleDuplicateCreation(ctx context.Context, userID string, idempotencyKey *string, err error) (*domain.Transaction, error) {
-	if errors.Is(err, apperrors.ErrAlreadyExists) && idempotencyKey != nil {
-		existing, _ := uc.txRepo.GetByUserAndIdempotencyKey(ctx, userID, *idempotencyKey)
-		if existing != nil {
-			return existing, nil
-		}
-	}
-	return nil, err
 }
 
 // processPayment calls the payment provider and returns the provider reference or error.
