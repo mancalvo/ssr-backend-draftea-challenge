@@ -67,7 +67,7 @@ func NewContainer(db *database.DB) *Container {
 	entitlementHandlers := handlers.NewEntitlementHandlers(entitlementRepo, offeringRepo)
 
 	// Initialize idempotency domain
-	idempotencyRepo := idempotencyInfra.NewPostgresRepository(db)
+	idempotencyRepo := idempotencyInfra.NewPostgresRepository(db, timeProv)
 	idempotencyService := idempotencySvc.New(idempotencyRepo, timeProv)
 	idempotencyMiddleware := idempotencyMw.New(idempotencyService)
 

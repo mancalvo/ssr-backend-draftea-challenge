@@ -9,8 +9,12 @@ import (
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/idempotency/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
-	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
+
+// TimeProvider provides the current time.
+type TimeProvider interface {
+	Now() time.Time
+}
 
 // Service defines the interface for idempotency operations.
 type Service interface {
@@ -30,11 +34,11 @@ type Service interface {
 
 type service struct {
 	repo     domain.Repository
-	timeProv timeprovider.Provider
+	timeProv TimeProvider
 }
 
 // New creates a new idempotency service.
-func New(repo domain.Repository, timeProv timeprovider.Provider) Service {
+func New(repo domain.Repository, timeProv TimeProvider) Service {
 	return &service{
 		repo:     repo,
 		timeProv: timeProv,

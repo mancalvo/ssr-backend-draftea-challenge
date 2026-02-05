@@ -12,12 +12,18 @@ import (
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
 )
 
-type PostgresRepository struct {
-	db database.Executor
+// TimeProvider provides the current time.
+type TimeProvider interface {
+	Now() time.Time
 }
 
-func NewPostgresRepository(db database.Executor) *PostgresRepository {
-	return &PostgresRepository{db: db}
+type PostgresRepository struct {
+	db       database.Executor
+	timeProv TimeProvider
+}
+
+func NewPostgresRepository(db database.Executor, timeProv TimeProvider) *PostgresRepository {
+	return &PostgresRepository{db: db, timeProv: timeProv}
 }
 
 func isUniqueViolation(err error) bool {
@@ -58,7 +64,7 @@ func (r *PostgresRepository) Get(ctx context.Context, key string) (*domain.Idemp
 	record.ResponseBody = responseBody
 
 	// Lazy cleanup: if expired, delete and return not found
-	if time.Now().After(record.ExpiresAt) {
+	if r.timeProv.Now().After(record.ExpiresAt) {
 		_ = r.Delete(ctx, key)
 		return nil, apperrors.ErrNotFound
 	}

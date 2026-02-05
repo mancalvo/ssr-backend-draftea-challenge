@@ -4,12 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 	apperrors "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/errors"
-	idgen "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/idgen"
-	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
+
+// IDGenerator generates unique identifiers.
+type IDGenerator interface {
+	Generate() string
+}
+
+// TimeProvider provides the current time.
+type TimeProvider interface {
+	Now() time.Time
+}
 
 // UseCase defines the interface for deposit operations.
 type UseCase interface {
@@ -22,8 +31,8 @@ type PaymentDepositUseCase struct {
 	walletSvc domain.WalletService
 	userSvc   domain.UserService
 	provider  domain.PaymentProvider
-	idGen     idgen.Generator
-	timeProv  timeprovider.Provider
+	idGen     IDGenerator
+	timeProv  TimeProvider
 }
 
 // New creates a new PaymentDepositUseCase with the required dependencies.
@@ -32,8 +41,8 @@ func New(
 	walletSvc domain.WalletService,
 	userSvc domain.UserService,
 	provider domain.PaymentProvider,
-	idGen idgen.Generator,
-	timeProv timeprovider.Provider,
+	idGen IDGenerator,
+	timeProv TimeProvider,
 ) *PaymentDepositUseCase {
 	return &PaymentDepositUseCase{
 		txRepo:    txRepo,

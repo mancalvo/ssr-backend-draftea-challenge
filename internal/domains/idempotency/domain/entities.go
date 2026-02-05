@@ -20,7 +20,7 @@ func (r *IdempotencyRecord) IsInProgress() bool {
 	return r.StatusCode == 0
 }
 
-// IsExpired returns true if the record has expired.
-func (r *IdempotencyRecord) IsExpired() bool {
-	return time.Now().After(r.ExpiresAt)
+// IsExpired returns true if the record has expired based on the given current time.
+func (r *IdempotencyRecord) IsExpired(now time.Time) bool {
+	return now.After(r.ExpiresAt)
 }

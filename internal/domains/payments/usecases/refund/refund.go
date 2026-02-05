@@ -2,11 +2,20 @@ package refund
 
 import (
 	"context"
+	"time"
 
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
-	idgen "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/idgen"
-	timeprovider "github.com/mancalvo/ssr-backend-draftea-challenge/pkg/providers/time"
 )
+
+// IDGenerator generates unique identifiers.
+type IDGenerator interface {
+	Generate() string
+}
+
+// TimeProvider provides the current time.
+type TimeProvider interface {
+	Now() time.Time
+}
 
 // TransactionRunner executes operations within a database transaction.
 type TransactionRunner interface {
@@ -24,8 +33,8 @@ type PaymentRefundUseCase struct {
 	txRepo     domain.TransactionRepository
 	walletSvc  domain.WalletService
 	entitleSvc domain.EntitlementService
-	idGen      idgen.Generator
-	timeProv   timeprovider.Provider
+	idGen      IDGenerator
+	timeProv   TimeProvider
 }
 
 // New creates a new PaymentRefundUseCase with the required dependencies.
@@ -34,8 +43,8 @@ func New(
 	txRepo domain.TransactionRepository,
 	walletSvc domain.WalletService,
 	entitleSvc domain.EntitlementService,
-	idGen idgen.Generator,
-	timeProv timeprovider.Provider,
+	idGen IDGenerator,
+	timeProv TimeProvider,
 ) *PaymentRefundUseCase {
 	return &PaymentRefundUseCase{
 		txRunner:   txRunner,
