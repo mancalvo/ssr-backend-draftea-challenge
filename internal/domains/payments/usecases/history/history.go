@@ -6,18 +6,28 @@ import (
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/domains/payments/domain"
 )
 
+// TransactionReader retrieves transaction history.
+type TransactionReader interface {
+	GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error)
+}
+
+// UserService verifies user exists.
+type UserService interface {
+	IsActive(ctx context.Context, userID string) (bool, error)
+}
+
 type UseCase interface {
 	Execute(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error)
 }
 
 type PaymentHistoryUseCase struct {
-	txRepo  domain.TransactionRepository
-	userSvc domain.UserService
+	txRepo  TransactionReader
+	userSvc UserService
 }
 
 func New(
-	txRepo domain.TransactionRepository,
-	userSvc domain.UserService,
+	txRepo TransactionReader,
+	userSvc UserService,
 ) *PaymentHistoryUseCase {
 	return &PaymentHistoryUseCase{
 		txRepo:  txRepo,

@@ -20,6 +20,28 @@ type TimeProvider interface {
 	Now() time.Time
 }
 
+// TransactionWriter handles transaction persistence for deposits.
+type TransactionWriter interface {
+	Create(ctx context.Context, tx *domain.Transaction) error
+	UpdateStatus(ctx context.Context, id string, status domain.TransactionStatus) error
+}
+
+// WalletService provides wallet operations for deposits.
+type WalletService interface {
+	GetBalance(ctx context.Context, userID string) (balanceCents int64, walletID string, err error)
+	Credit(ctx context.Context, userID string, amountCents int64) error
+}
+
+// UserService verifies user status.
+type UserService interface {
+	IsActive(ctx context.Context, userID string) (bool, error)
+}
+
+// PaymentProvider processes card payments.
+type PaymentProvider interface {
+	ProcessPayment(ctx context.Context, amount int64, cardToken string, idempotencyKey string) (*domain.ProviderResponse, error)
+}
+
 // UseCase defines the interface for deposit operations.
 type UseCase interface {
 	Execute(ctx context.Context, userID string, amount int64, cardToken string, idempotencyKey *string) (*domain.Transaction, error)
@@ -27,20 +49,20 @@ type UseCase interface {
 
 // PaymentDepositUseCase orchestrates deposit processing.
 type PaymentDepositUseCase struct {
-	txRepo    domain.TransactionRepository
-	walletSvc domain.WalletService
-	userSvc   domain.UserService
-	provider  domain.PaymentProvider
+	txRepo    TransactionWriter
+	walletSvc WalletService
+	userSvc   UserService
+	provider  PaymentProvider
 	idGen     IDGenerator
 	timeProv  TimeProvider
 }
 
 // New creates a new PaymentDepositUseCase with the required dependencies.
 func New(
-	txRepo domain.TransactionRepository,
-	walletSvc domain.WalletService,
-	userSvc domain.UserService,
-	provider domain.PaymentProvider,
+	txRepo TransactionWriter,
+	walletSvc WalletService,
+	userSvc UserService,
+	provider PaymentProvider,
 	idGen IDGenerator,
 	timeProv TimeProvider,
 ) *PaymentDepositUseCase {

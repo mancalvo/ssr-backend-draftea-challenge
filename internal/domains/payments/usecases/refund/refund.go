@@ -22,6 +22,24 @@ type TransactionRunner interface {
 	RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// TransactionRepository for refund operations.
+type TransactionRepository interface {
+	Create(ctx context.Context, tx *domain.Transaction) error
+	GetByID(ctx context.Context, id string) (*domain.Transaction, error)
+}
+
+// WalletService provides wallet operations for refunds.
+type WalletService interface {
+	GetBalance(ctx context.Context, userID string) (balanceCents int64, walletID string, err error)
+	Credit(ctx context.Context, userID string, amountCents int64) error
+}
+
+// EntitlementService for refund operations.
+type EntitlementService interface {
+	GetActiveEntitlementForOffering(ctx context.Context, userID, offeringID string) (transactionID string, err error)
+	RevokeAccess(ctx context.Context, userID, offeringID string) error
+}
+
 // UseCase defines the interface for refund operations.
 type UseCase interface {
 	Execute(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error)
@@ -30,9 +48,9 @@ type UseCase interface {
 // PaymentRefundUseCase orchestrates refund processing.
 type PaymentRefundUseCase struct {
 	txRunner   TransactionRunner
-	txRepo     domain.TransactionRepository
-	walletSvc  domain.WalletService
-	entitleSvc domain.EntitlementService
+	txRepo     TransactionRepository
+	walletSvc  WalletService
+	entitleSvc EntitlementService
 	idGen      IDGenerator
 	timeProv   TimeProvider
 }
@@ -40,9 +58,9 @@ type PaymentRefundUseCase struct {
 // New creates a new PaymentRefundUseCase with the required dependencies.
 func New(
 	txRunner TransactionRunner,
-	txRepo domain.TransactionRepository,
-	walletSvc domain.WalletService,
-	entitleSvc domain.EntitlementService,
+	txRepo TransactionRepository,
+	walletSvc WalletService,
+	entitleSvc EntitlementService,
 	idGen IDGenerator,
 	timeProv TimeProvider,
 ) *PaymentRefundUseCase {

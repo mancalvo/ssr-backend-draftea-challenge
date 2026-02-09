@@ -2,10 +2,7 @@ package time
 
 import stdtime "time"
 
-type Provider interface {
-	Now() stdtime.Time
-}
-
+// SystemProvider provides the current system time.
 type SystemProvider struct{}
 
 func (p *SystemProvider) Now() stdtime.Time {

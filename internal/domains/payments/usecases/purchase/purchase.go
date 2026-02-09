@@ -23,6 +23,34 @@ type TransactionRunner interface {
 	RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// TransactionCreator persists transactions.
+type TransactionCreator interface {
+	Create(ctx context.Context, tx *domain.Transaction) error
+}
+
+// WalletService provides wallet operations for purchases.
+type WalletService interface {
+	GetBalance(ctx context.Context, userID string) (balanceCents int64, walletID string, err error)
+	Debit(ctx context.Context, userID string, amountCents int64) error
+}
+
+// UserService verifies user status.
+type UserService interface {
+	IsActive(ctx context.Context, userID string) (bool, error)
+}
+
+// OfferingService provides offering information.
+type OfferingService interface {
+	GetPrice(ctx context.Context, offeringID string) (priceCents int64, err error)
+	IsAvailable(ctx context.Context, offeringID string) (bool, error)
+}
+
+// EntitlementService manages user access to offerings.
+type EntitlementService interface {
+	GrantAccess(ctx context.Context, userID, offeringID, transactionID string) error
+	HasActiveAccess(ctx context.Context, userID, offeringID string) (bool, error)
+}
+
 // UseCase defines the interface for purchase operations.
 type UseCase interface {
 	Execute(ctx context.Context, userID, offeringID string, idempotencyKey *string) (*domain.Transaction, error)
@@ -31,11 +59,11 @@ type UseCase interface {
 // PaymentPurchaseUseCase orchestrates purchase processing.
 type PaymentPurchaseUseCase struct {
 	txRunner    TransactionRunner
-	txRepo      domain.TransactionRepository
-	walletSvc   domain.WalletService
-	userSvc     domain.UserService
-	offeringSvc domain.OfferingService
-	entitleSvc  domain.EntitlementService
+	txRepo      TransactionCreator
+	walletSvc   WalletService
+	userSvc     UserService
+	offeringSvc OfferingService
+	entitleSvc  EntitlementService
 	idGen       IDGenerator
 	timeProv    TimeProvider
 }
@@ -43,11 +71,11 @@ type PaymentPurchaseUseCase struct {
 // New creates a new PaymentPurchaseUseCase with the required dependencies.
 func New(
 	txRunner TransactionRunner,
-	txRepo domain.TransactionRepository,
-	walletSvc domain.WalletService,
-	userSvc domain.UserService,
-	offeringSvc domain.OfferingService,
-	entitleSvc domain.EntitlementService,
+	txRepo TransactionCreator,
+	walletSvc WalletService,
+	userSvc UserService,
+	offeringSvc OfferingService,
+	entitleSvc EntitlementService,
 	idGen IDGenerator,
 	timeProv TimeProvider,
 ) *PaymentPurchaseUseCase {

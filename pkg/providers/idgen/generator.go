@@ -2,10 +2,7 @@ package idgen
 
 import "github.com/rs/xid"
 
-type Generator interface {
-	Generate() string
-}
-
+// XIDGenerator generates unique XIDs.
 type XIDGenerator struct{}
 
 func (g *XIDGenerator) Generate() string {
