@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <include file="changelog/changelogs/000001_create_users.sql" relativeToChangelogFile="false"/>
+    <include file="changelog/changelogs/000002_create_wallets.sql" relativeToChangelogFile="false"/>
+    <include file="changelog/changelogs/000003_create_offerings.sql" relativeToChangelogFile="false"/>
+    <include file="changelog/changelogs/000004_create_transactions.sql" relativeToChangelogFile="false"/>
+    <include file="changelog/changelogs/000005_create_entitlements.sql" relativeToChangelogFile="false"/>
+    <include file="changelog/changelogs/000006_create_idempotency_records.sql" relativeToChangelogFile="false"/>
+
+</databaseChangeLog>

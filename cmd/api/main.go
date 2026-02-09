@@ -29,11 +29,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run migrations
-	if err := dbseeds.MigrateUp(cfg.Database); err != nil {
-		logger.Error("failed to run migrations", "error", err)
-		os.Exit(1)
-	}
+	// Migrations are now handled by Liquibase via Docker before the app starts
 
 	// Run seeds if in development environment
 	if err := seeds.Run(context.Background(), db.DB, cfg); err != nil {

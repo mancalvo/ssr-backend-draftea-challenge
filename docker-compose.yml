@@ -14,8 +14,8 @@ services:
       - APP_ENV=${APP_ENV:-development}
       - WORKDIR=/app
     depends_on:
-      postgres:
-        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   postgres:
@@ -34,5 +34,26 @@ services:
       timeout: 5s
       retries: 5
 
+  liquibase:
+    image: liquibase/liquibase:4.25
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+    volumes:
+      - ./liquibase:/liquibase/changelog
+    command: >
+      --defaults-file=/liquibase/changelog/liquibase.properties
+      --changelog-file=changelog/changelog-master.xml
+      --url=jdbc:postgresql://postgres:${DB_PORT}/${DB_NAME}
+      --username=${DB_USER}
+      --password=${DB_PASSWORD}
+      update
+
 volumes:
   postgres_data:
+
