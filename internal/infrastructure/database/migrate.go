@@ -6,17 +6,23 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/internal/config"
+	"github.com/mancalvo/ssr-backend-draftea-challenge/migrations"
 	"github.com/mancalvo/ssr-backend-draftea-challenge/pkg/logger"
 )
 
 func MigrateUp(cfg config.DatabaseConfig) error {
 	dbURL := buildPostgresURL(cfg)
-	migrationsPath := "migrations"
 
-	m, err := migrate.New(
-		"file://"+migrationsPath,
+	sourceDriver, err := iofs.New(migrations.MigrationsFS, ".")
+	if err != nil {
+		return fmt.Errorf("failed to create migration source driver: %w", err)
+	}
+
+	m, err := migrate.NewWithSourceInstance(
+		"iofs",
+		sourceDriver,
 		dbURL,
 	)
 	if err != nil {
@@ -34,10 +40,15 @@ func MigrateUp(cfg config.DatabaseConfig) error {
 
 func MigrateDown(cfg config.DatabaseConfig) error {
 	dbURL := buildPostgresURL(cfg)
-	migrationsPath := "migrations"
 
-	m, err := migrate.New(
-		"file://"+migrationsPath,
+	sourceDriver, err := iofs.New(migrations.MigrationsFS, ".")
+	if err != nil {
+		return fmt.Errorf("failed to create migration source driver: %w", err)
+	}
+
+	m, err := migrate.NewWithSourceInstance(
+		"iofs",
+		sourceDriver,
 		dbURL,
 	)
 	if err != nil {
