@@ -25,8 +25,3 @@ CREATE TABLE transactions (
 -- Indexes for transactions
 CREATE INDEX idx_transactions_user ON transactions(user_id, created_at DESC);
 CREATE INDEX idx_transactions_wallet ON transactions(wallet_id);
-
--- Unique idempotency key per user (prevents cross-user key leakage)
-CREATE UNIQUE INDEX idx_transactions_user_idempotency_key 
-ON transactions (user_id, idempotency_key) 
-WHERE idempotency_key IS NOT NULL;

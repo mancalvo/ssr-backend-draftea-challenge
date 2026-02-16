@@ -108,37 +108,6 @@ func (r *PostgresTransactionRepository) GetByID(ctx context.Context, id string) 
 	return &tx, nil
 }
 
-func (r *PostgresTransactionRepository) GetByUserAndIdempotencyKey(ctx context.Context, userID string, key string) (*domain.Transaction, error) {
-	query := `
-		SELECT id, user_id, wallet_id, type, amount_cents, status, offering_id, provider_ref, idempotency_key, created_at
-		FROM transactions
-		WHERE user_id = $1 AND idempotency_key = $2
-	`
-
-	var tx domain.Transaction
-	err := r.getExecutor(ctx).QueryRowContext(ctx, query, userID, key).Scan(
-		&tx.ID,
-		&tx.UserID,
-		&tx.WalletID,
-		&tx.Type,
-		&tx.Amount,
-		&tx.Status,
-		&tx.OfferingID,
-		&tx.ProviderRef,
-		&tx.IdempotencyKey,
-		&tx.CreatedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, apperrors.ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &tx, nil
-}
-
 func (r *PostgresTransactionRepository) GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
 	// Count total
 	countQuery := `SELECT COUNT(*) FROM transactions WHERE user_id = $1`

@@ -60,15 +60,6 @@ func (m *mockTransactionRepo) UpdateStatus(ctx context.Context, id string, statu
 	return apperrors.ErrNotFound
 }
 
-func (m *mockTransactionRepo) GetByUserAndIdempotencyKey(ctx context.Context, userID string, key string) (*domain.Transaction, error) {
-	for _, tx := range m.transactions {
-		if tx.UserID == userID && tx.IdempotencyKey != nil && *tx.IdempotencyKey == key {
-			return tx, nil
-		}
-	}
-	return nil, apperrors.ErrNotFound
-}
-
 func (m *mockTransactionRepo) GetByUserID(ctx context.Context, userID string, page, pageSize int) (*domain.PaginatedTransactions, error) {
 	return nil, nil // Not needed
 }
